@@ -1,0 +1,33 @@
+# Local Android and IDE configuration
+local.properties
+.idea/
+*.iml
+
+# Gradle and Kotlin caches
+.gradle/
+.kotlin/
+**/build/
+
+# Native and device-generated output
+.cxx/
+.externalNativeBuild/
+captures/
+*.hprof
+*.log
+
+# Project-local private evidence and disposable work
+.local-evidence/
+.tmp/
+
+# Signing and secrets
+*.jks
+*.keystore
+keystore.properties
+.env
+.env.*
+!.env.example
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

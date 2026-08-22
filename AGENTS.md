@@ -31,12 +31,24 @@
 - `docs/`：项目定义、架构决策、功能规格、测试记录和用户文档。
 - `docs/开发计划书/`：详细开发计划总索引、路线图、架构、非功能需求、测试策略、任务拆分和计划变更记录。
 - `docs/开发计划书/specs/`：每个 `[A]`、`[B]` 功能各自的独立规格文件；文件名使用稳定的中文功能名，不使用版本号或完成状态后缀。
-- `app/`：落地阶段确定 Android 工程结构后使用；立项阶段不创建。
+- `docs/phase-0/`：可公开的 Phase 0 工具链基线、Spike 协议、去敏结果和决策矩阵；文件名以对应任务或 Spike ID 开头，例如 `P0-001-toolchain-baseline.md`。真实通知正文、系统动作令牌、本机绝对路径和未脱敏截图不得进入此目录。
+- `app/`：唯一 Android 应用模块。`src/main/` 只放可进入 release 的壳与实现，`src/debug/` 放不会进入 release 的 Phase 0 调试入口，`src/test/` 放 JVM 测试，`src/androidTest/` 放设备测试；不得另建平行的“临时应用”绕过正式构建。
+- `gradle/`：Gradle Wrapper 与版本目录。Wrapper 脚本、JAR、校验后的固定分发 URL和 `libs.versions.toml` 可以跟踪；下载的分发包与用户级缓存不得复制入库。
+- `tools/`：项目内可复现的检查、去敏、夹具和测量脚本；脚本必须有单一入口、非零失败码和简短用法，不得要求全局安装才能运行。
+- `.local-evidence/`：仅本机保存的原始 Phase 0 证据、设备输出和真实通知样本，必须被 Git 忽略；需要提交的结论先去敏，再人工写入 `docs/phase-0/`。该目录不自动清理，删除前仍需用户授权。
 - `artifacts/`：明确要求保留的 APK、报告等交付物；不得混放源码。
 - `.tmp/`：可再生成的临时文件；任务结束前清理，不提交版本库。
 - 项目根目录只放全项目级配置、入口文档和构建文件，不堆放调研附件或临时输出。
 
 新增目录前，先在本节补充用途、命名和清理规则。
+
+### 本地配置与生成物
+
+- `local.properties` 只保存本机 SDK 定位，必须被 Git 忽略；任何文档、提交、日志和诊断导出都不得复制其中的绝对路径。
+- `.gradle/`、`.kotlin/`、`.idea/`、所有 `build/`、设备捕获和性能原始输出均为本地生成物，不得提交。
+- 构建版本使用固定值，不使用 `+`、`latest`、浮动范围或未经校验的预览版。
+- Phase 0 默认使用项目 Wrapper 和进程级环境变量，不修改用户或系统级 `PATH`、`JAVA_HOME`、`ANDROID_HOME`。
+- v0 保持单 `:app` 模块；出现第二个真实复用边界前，不新增通用宿主、基础设施模块或独立后台进程模块。
 
 ## 命名与写作
 
@@ -109,6 +121,19 @@
 - Android 后台可靠性只能通过目标手机实测确认，模拟器或单元测试不能替代。
 - 密钥、Token、通知原文和个人数据不得进入代码仓库、提交记录或公开日志。
 - 未经用户明确要求，不生成或覆盖发布版 APK，不执行公开发布。
+
+## 当前验证命令
+
+工程创建后，每次相关改动至少运行与范围相称的以下命令；命令尚不存在或失败时不得宣称任务完成：
+
+- Wrapper/环境：`.\gradlew.bat --version`
+- JVM 测试：`.\gradlew.bat test`
+- Android 静态检查：`.\gradlew.bat lint`
+- 调试构建：`.\gradlew.bat :app:assembleDebug`
+- 本地未签名/默认签名发布构建检查：`.\gradlew.bat :app:assembleRelease`
+- 总门：`.\gradlew.bat test lint :app:assembleDebug :app:assembleRelease`
+
+真机命令、性能命令和 Spike 专用任务在建立后补入本节。真实设备输出先进入 `.local-evidence/`，去敏摘要再进入 Git。
 
 ## 变更红线
 
