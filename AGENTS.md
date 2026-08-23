@@ -135,6 +135,8 @@
 - instrumentation 测试 APK 编译：`.\gradlew.bat :app:assembleDebugAndroidTest`
 - Android 设备测试（有目标设备时）：`.\gradlew.bat connectedDebugAndroidTest`
 - Android 安装启动冒烟（有授权设备时）：`.\tools\install-and-smoke-test.ps1`
+- Phase 0 私有证据模板（按 Spike）：`.\tools\new-phase0-evidence.ps1 -SpikeId SP-01`
+- 公开候选树敏感扫描：`.\tools\verify-sensitive-content.ps1 -SelfTest`
 - Android 静态检查：`.\gradlew.bat lint`
 - 调试构建：`.\gradlew.bat :app:assembleDebug`
 - 本地未签名/默认签名发布构建检查：`.\gradlew.bat :app:assembleRelease`

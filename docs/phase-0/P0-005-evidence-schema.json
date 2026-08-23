@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/prince-dulb/OhMyNotification/schemas/phase-0-evidence-v1.json",
+  "title": "Oh My Notification Phase 0 private evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "spikeId",
+    "runId",
+    "createdAt",
+    "source",
+    "build",
+    "device",
+    "dataset",
+    "status",
+    "preconditions",
+    "steps",
+    "observations",
+    "failures",
+    "conclusion",
+    "publication"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "spikeId": { "type": "string", "pattern": "^SP-0[1-9]$" },
+    "runId": { "type": "string", "pattern": "^SP-0[1-9]-[0-9]{8}T[0-9]{6}[+-][0-9]{4}$" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "workingTreeDirty"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "workingTreeDirty": { "type": "boolean" }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant", "artifactName", "artifactSha256"],
+      "properties": {
+        "variant": { "type": "string" },
+        "artifactName": { "type": ["string", "null"] },
+        "artifactSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captureStatus", "serialSha256", "model", "sdk", "abiList"],
+      "properties": {
+        "captureStatus": { "enum": ["CAPTURED", "NOT_CAPTURED"] },
+        "serialSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "model": { "type": ["string", "null"] },
+        "sdk": { "type": ["string", "null"] },
+        "abiList": { "type": ["string", "null"] }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string" },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "status": { "enum": ["NOT_RUN", "RUNNING", "PASS", "FAIL", "UNSTABLE", "NOT_OBSERVED"] },
+    "preconditions": { "type": "array", "items": { "type": "object" } },
+    "steps": { "type": "array", "items": { "type": "object" } },
+    "observations": { "type": "array", "items": { "type": "object" } },
+    "failures": { "type": "array", "items": { "type": "object" } },
+    "conclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "confidence", "limitations", "openQuestions"],
+      "properties": {
+        "decision": { "enum": ["NOT_EVALUATED", "GO", "REDIRECT", "STOP"] },
+        "confidence": { "enum": ["NOT_EVALUATED", "LOW", "MEDIUM", "HIGH"] },
+        "limitations": { "type": "array", "items": { "type": "string" } },
+        "openQuestions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["containsPrivateData", "publicSummaryStatus"],
+      "properties": {
+        "containsPrivateData": { "const": true },
+        "publicSummaryStatus": { "enum": ["NOT_PREPARED", "REDACTED", "REVIEWED"] }
+      }
+    }
+  }
+}
