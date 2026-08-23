@@ -19,9 +19,12 @@ Debug 统计接收器只输出计数、布尔值和发生变化的字段名。�
 | 窗口 | 结果 | 解释边界 |
 |---|---|---|
 | 锁屏点亮但未解锁，19 秒、每 1.9 秒一次去敏统计 | 3 次 Room 通知提交；1 次状态卡发布；变化字段仅 `body`、`bodyOriginalCodePoints`、`contentFingerprint` | 证明剩余写入来自真实可见正文变化，不是 `postTime`、进程会话或动作能力抖动；诊断广播自身污染 CPU，故不报告 CPU |
-| 息屏 20 秒、不调用 Debug 广播 | OMN 进程 PID 稳定；进程 CPU 增量 67 ticks；数据库文件总分配从 740,072 B 到 744,168 B，增长 4,096 B | ticks 未校准为 CPU 时间且 Debug 开销不同于 release；但非零 CPU 与实际文件增长足以阻止“空闲接近零”的结论 |
+| 息屏 20 秒、不调用 Debug 广播，但 OMN Activity 仍为 focused/resumed | OMN 进程 PID 稳定；进程 CPU 增量 67 ticks；数据库文件总分配从 740,072 B 到 744,168 B，增长 4,096 B | 这不是后台空闲基线。它只说明“屏幕熄灭”不等于 UI 已退到后台，并与上方动态正文更新诊断相符 |
+| 先返回桌面再熄屏，确认 Activity 非 resumed 且进程 `frozen=true` 后计时 20 秒 | OMN 进程 PID 稳定；进程 CPU 增量 0 ticks；数据库文件总分配保持 778,240 B，增长 0 B | 这是目前唯一有效的真正后台短窗口；只支持“该 20 秒 Debug 样本无可见 CPU/写盘活动”，不能外推 8 小时耗电或 release 预算 |
 
 此前修复已让完全相同的活动通知补扫不再改写 Room，并保留第一份有效来源 `postTime`。本轮字段诊断说明剩余热点不是无意义重复，而是一条活动通知持续改变正文；当前逐观察事务会按每次正文变化更新归档。
+
+真正后台采样结束时，系统将 OMN 标记为 frozen、cached、empty，`killed=false`；监听服务 Binder 和常驻状态卡仍存在。同期未发现归属 OMN 的活动 WakeLock、计划 Job 或 Alarm。冻结进程无法直接取得 `dumpsys meminfo`；一次通过去敏 Debug 统计唤醒进程但不恢复 Activity 后的单点为总 PSS 96,276 KiB、`oom_score_adj=250`。该数值来自 Debug 单点，既不是稳态分布，也不能作为 release 内存预算。
 
 ## 4. 待决减写方案
 
