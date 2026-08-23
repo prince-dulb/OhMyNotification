@@ -5,9 +5,13 @@ Requests Android to rebind the already-authorized debug Phase 0 notification lis
 
 .EXAMPLE
 .\tools\request-phase0-listener-rebind.ps1
+
+.EXAMPLE
+.\tools\request-phase0-listener-rebind.ps1 -ResetBinding
 #>
 param(
-    [string]$Serial
+    [string]$Serial,
+    [switch]$ResetBinding
 )
 
 $ErrorActionPreference = 'Stop'
@@ -86,7 +90,11 @@ if (@($accessSetting -split ':' | Where-Object { $_ -eq $listenerComponent }).Co
     throw 'Notification listener access is not granted; requestRebind cannot grant it.'
 }
 
-$startOutput = Invoke-Adb -Arguments @('shell', 'am', 'start', '-W', '-n', $rebindComponent)
+$resetValue = $ResetBinding.IsPresent.ToString().ToLowerInvariant()
+$startOutput = Invoke-Adb -Arguments @(
+    'shell', 'am', 'start', '-W', '-n', $rebindComponent,
+    '--ez', 'omn_reset_binding', $resetValue
+)
 $startText = $startOutput -join [Environment]::NewLine
 if ($startText -match '(?m)^Error:|SecurityException|Exception occurred') {
     throw "Unable to start the debug rebind activity.$([Environment]::NewLine)$startText"
@@ -96,7 +104,7 @@ $deadline = [DateTimeOffset]::Now.AddSeconds(5)
 do {
     $serviceDump = Invoke-Adb -Arguments @('shell', 'dumpsys', 'activity', 'services', $packageName)
     if (($serviceDump -join "`n") -match 'PhaseZeroNotificationListener') {
-        Write-Output 'PASS access=true bound=true requested=true'
+        Write-Output "PASS access=true bound=true requested=true reset=$resetValue"
         exit 0
     }
     Start-Sleep -Milliseconds 100
