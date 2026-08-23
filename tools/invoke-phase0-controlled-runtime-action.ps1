@@ -10,7 +10,7 @@ Dispatches only the latest runtime action captured from the controlled test APK.
 .\tools\invoke-phase0-controlled-runtime-action.ps1 -ExpectedStatus NOT_FOUND
 #>
 param(
-    [ValidateSet('ACCEPTED', 'CANCELED', 'NOT_FOUND')]
+    [ValidateSet('ACCEPTED', 'CANCELED', 'NOT_FOUND', 'SECURITY_REJECTED')]
     [string]$ExpectedStatus = 'ACCEPTED',
 
     [string]$Serial

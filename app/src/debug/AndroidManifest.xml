@@ -16,6 +16,18 @@
             android:noHistory="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
+        <activity
+            android:name=".phase0.PhaseZeroBilibiliActionActivity"
+            android:exported="true"
+            android:label="@string/phase_zero_bilibili_action_label"
+            android:theme="@style/Theme.OhMyNotification">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".phase0.PhaseZeroNotificationListener"
             android:exported="false"

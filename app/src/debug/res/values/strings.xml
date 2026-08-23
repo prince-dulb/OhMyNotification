@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="phase_zero_listener_label">OMN Phase 0 通知监听验证</string>
+    <string name="phase_zero_bilibili_action_label">OMN B站跳转验证</string>
+    <string name="phase_zero_bilibili_action_title">B站原通知动作验证</string>
+    <string name="phase_zero_bilibili_action_count">当前进程保存了 %1$d 个 B站动作引用。</string>
+    <string name="phase_zero_bilibili_action_description">点击后将打开按通知发布时间选择的最新一条。请核对是否进入对应视频、动态或直播间。</string>
+    <string name="phase_zero_bilibili_action_button">打开最新一条 B站通知</string>
+    <string name="phase_zero_bilibili_action_none">当前进程没有可用的 B站动作。</string>
+    <string name="phase_zero_bilibili_action_ready">尚未尝试。</string>
+    <string name="phase_zero_bilibili_action_accepted">系统已接受动作；请核对 B站实际落页。</string>
+    <string name="phase_zero_bilibili_action_canceled">原动作已被创建方取消。</string>
+    <string name="phase_zero_bilibili_action_not_found">没有找到当前进程内的 B站动作。</string>
+    <string name="phase_zero_bilibili_action_security_rejected">Android 安全策略拒绝了这次启动。</string>
 </resources>

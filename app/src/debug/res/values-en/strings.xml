@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="phase_zero_listener_label">OMN Phase 0 notification listener</string>
+    <string name="phase_zero_bilibili_action_label">OMN Bilibili jump verification</string>
+    <string name="phase_zero_bilibili_action_title">Bilibili original-action verification</string>
+    <string name="phase_zero_bilibili_action_count">This process holds %1$d Bilibili action references.</string>
+    <string name="phase_zero_bilibili_action_description">This opens the newest action by notification post time. Verify whether Bilibili lands on the expected video, post, or live room.</string>
+    <string name="phase_zero_bilibili_action_button">Open newest Bilibili notification</string>
+    <string name="phase_zero_bilibili_action_none">No Bilibili action is available in this process.</string>
+    <string name="phase_zero_bilibili_action_ready">Not attempted yet.</string>
+    <string name="phase_zero_bilibili_action_accepted">Android accepted the action. Verify the actual Bilibili landing page.</string>
+    <string name="phase_zero_bilibili_action_canceled">The creator canceled the original action.</string>
+    <string name="phase_zero_bilibili_action_not_found">No Bilibili action exists in the current process.</string>
+    <string name="phase_zero_bilibili_action_security_rejected">Android security policy rejected this launch.</string>
 </resources>

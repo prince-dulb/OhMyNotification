@@ -147,7 +147,11 @@ class PhaseZeroNotificationListener : NotificationListenerService() {
 
         val notification = statusBarNotification.notification
         val eventId = event.getString("eventId")
-        RuntimeActionRegistry.put(eventId, notification.contentIntent)
+        RuntimeActionRegistry.put(
+            eventId = eventId,
+            pendingIntent = notification.contentIntent,
+            postTimeEpochMillis = statusBarNotification.postTime,
+        )
         event
             .put("captureResult", "CAPTURED_PRIVATE_PHASE0")
             .put("notification", notificationProjection(notification))
@@ -307,6 +311,7 @@ internal enum class RuntimeActionDispatchStatus {
     ACCEPTED,
     CANCELED,
     NOT_FOUND,
+    SECURITY_REJECTED,
 }
 
 internal data class RuntimeActionDispatchResult(
@@ -316,15 +321,27 @@ internal data class RuntimeActionDispatchResult(
 
 internal object RuntimeActionRegistry {
     private const val MAX_HANDLES = 512
-    private val handles = object : LinkedHashMap<String, PendingIntent>(MAX_HANDLES + 1, 0.75f, false) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PendingIntent>?): Boolean =
+    private var nextCaptureSequence = 0L
+    private val handles = object : LinkedHashMap<String, RuntimeActionHandle>(MAX_HANDLES + 1, 0.75f, false) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, RuntimeActionHandle>?,
+        ): Boolean =
             size > MAX_HANDLES
     }
 
     @Synchronized
-    fun put(eventId: String, pendingIntent: PendingIntent?) {
+    fun put(
+        eventId: String,
+        pendingIntent: PendingIntent?,
+        postTimeEpochMillis: Long,
+    ) {
         if (pendingIntent != null) {
-            handles[eventId] = pendingIntent
+            nextCaptureSequence += 1
+            handles[eventId] = RuntimeActionHandle(
+                pendingIntent = pendingIntent,
+                postTimeEpochMillis = postTimeEpochMillis,
+                captureSequence = nextCaptureSequence,
+            )
         }
     }
 
@@ -333,15 +350,19 @@ internal object RuntimeActionRegistry {
         creatorPackage: String,
         options: Bundle? = null,
     ): RuntimeActionDispatchResult {
-        val entry = handles.entries.lastOrNull { (_, pendingIntent) ->
-            pendingIntent.creatorPackage == creatorPackage
-        } ?: return RuntimeActionDispatchResult(
+        val entry = handles.entries
+            .asSequence()
+            .filter { (_, handle) -> handle.pendingIntent.creatorPackage == creatorPackage }
+            .maxWithOrNull(
+                compareBy<Map.Entry<String, RuntimeActionHandle>> { it.value.postTimeEpochMillis }
+                    .thenBy { it.value.captureSequence },
+            ) ?: return RuntimeActionDispatchResult(
             status = RuntimeActionDispatchStatus.NOT_FOUND,
             registrySizeAfter = handles.size,
         )
 
         return try {
-            entry.value.send(options)
+            entry.value.pendingIntent.send(options)
             RuntimeActionDispatchResult(
                 status = RuntimeActionDispatchStatus.ACCEPTED,
                 registrySizeAfter = handles.size,
@@ -352,12 +373,28 @@ internal object RuntimeActionRegistry {
                 status = RuntimeActionDispatchStatus.CANCELED,
                 registrySizeAfter = handles.size,
             )
+        } catch (_: SecurityException) {
+            RuntimeActionDispatchResult(
+                status = RuntimeActionDispatchStatus.SECURITY_REJECTED,
+                registrySizeAfter = handles.size,
+            )
         }
     }
 
     @Synchronized
     fun size(): Int = handles.size
+
+    @Synchronized
+    fun countForCreator(creatorPackage: String): Int = handles.values.count { handle ->
+        handle.pendingIntent.creatorPackage == creatorPackage
+    }
 }
+
+private data class RuntimeActionHandle(
+    val pendingIntent: PendingIntent,
+    val postTimeEpochMillis: Long,
+    val captureSequence: Long,
+)
 
 private class PhaseZeroEvidenceWriter(filesDirectory: File) {
     private val evidenceDirectory = File(filesDirectory, "phase0")
