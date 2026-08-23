@@ -15,6 +15,7 @@ object OmnNotificationListenerComponent {
 
 object ListenerRuntimeState {
     private val connected = AtomicBoolean(false)
+    private val connectionStateObserved = AtomicBoolean(false)
     private val connectionId = AtomicReference<String?>(null)
     private val listeners = CopyOnWriteArraySet<(Boolean) -> Unit>()
 
@@ -22,7 +23,10 @@ object ListenerRuntimeState {
 
     fun connectionId(): String? = connectionId.get()
 
+    fun hasObservedConnectionState(): Boolean = connectionStateObserved.get()
+
     fun setConnected(value: Boolean, currentConnectionId: String? = null) {
+        connectionStateObserved.set(true)
         connectionId.set(if (value) currentConnectionId else null)
         if (connected.getAndSet(value) != value) {
             listeners.forEach { listener -> listener(value) }

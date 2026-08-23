@@ -71,6 +71,8 @@ import io.github.prince_dulb.ohmynotification.capture.LaunchableSource
 import io.github.prince_dulb.ohmynotification.core.health.HealthFact
 import io.github.prince_dulb.ohmynotification.core.health.HealthTimelineDeriver
 import io.github.prince_dulb.ohmynotification.core.health.HealthTimelineQuery
+import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationDeriver
+import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationState
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
 import io.github.prince_dulb.ohmynotification.data.SourceSummaryRow
@@ -87,6 +89,7 @@ import kotlinx.coroutines.withContext
 data class AppUiState(
     val listenerAccessGranted: Boolean = false,
     val listenerConnected: Boolean = false,
+    val listenerConnectionObserved: Boolean = false,
     val statusNotificationGranted: Boolean = false,
     val statusNotificationChannelEnabled: Boolean = true,
 )
@@ -301,7 +304,24 @@ private fun InboxHeader(
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
 ) {
-    val healthy = state.listenerAccessGranted && state.listenerConnected
+    val presentation = StatusPresentationDeriver.derive(
+        listenerAccessGranted = state.listenerAccessGranted,
+        connectionObserved = state.listenerConnectionObserved,
+        listenerConnected = state.listenerConnected,
+    )
+    val healthy = presentation == StatusPresentationState.LISTENING
+    val healthTitle = when (presentation) {
+        StatusPresentationState.LISTENING -> "● 正在记录通知"
+        StatusPresentationState.WAITING_FOR_CONNECTION -> "◆ 已授权，等待系统连接"
+        StatusPresentationState.LISTENER_INTERRUPTED -> "◆ 监听连接已中断"
+        StatusPresentationState.ACCESS_REQUIRED -> "◆ 需要通知使用权"
+    }
+    val listenerDetail = when (presentation) {
+        StatusPresentationState.LISTENING -> "已连接"
+        StatusPresentationState.WAITING_FOR_CONNECTION -> "等待连接"
+        StatusPresentationState.LISTENER_INTERRUPTED -> "已中断"
+        StatusPresentationState.ACCESS_REQUIRED -> "未授权"
+    }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -326,12 +346,12 @@ private fun InboxHeader(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = if (healthy) "● 正在记录通知" else "◆ 尚未确认正在记录",
+                    text = healthTitle,
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "通知使用权 ${state.listenerAccessGranted.status()}　监听 ${state.listenerConnected.status()}\n通知权限 ${state.statusNotificationGranted.status()}　状态渠道 ${state.statusNotificationChannelEnabled.status()}",
+                    text = "通知使用权 ${state.listenerAccessGranted.status()}　监听 $listenerDetail\n通知权限 ${state.statusNotificationGranted.status()}　状态渠道 ${state.statusNotificationChannelEnabled.status()}",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

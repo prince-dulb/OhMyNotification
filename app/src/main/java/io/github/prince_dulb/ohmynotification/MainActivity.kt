@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
                 OmnNotificationListenerComponent.componentName(this),
             ),
             listenerConnected = ListenerRuntimeState.isConnected(),
+            listenerConnectionObserved = ListenerRuntimeState.hasObservedConnectionState(),
             statusNotificationGranted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED,
             statusNotificationChannelEnabled =
