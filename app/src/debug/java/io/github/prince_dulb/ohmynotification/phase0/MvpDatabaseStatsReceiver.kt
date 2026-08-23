@@ -112,7 +112,7 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
             )
             .put(
                 "includedSourceFilterCount",
-                graph.inboxViewPreferencesStore.includedSourcePackages.value.size,
+                graph.inboxViewPreferencesStore.includedSourceKeys.value.size,
             )
             .put("excludedSourceCount", database.scalar("SELECT COUNT(*) FROM excluded_sources"))
             .put("policyExcludedSourceCount", graph.policyStore.snapshot().userExcludedPackages.size)

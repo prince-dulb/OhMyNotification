@@ -14,16 +14,20 @@ class InboxViewPreferencesStoreTest {
     fun appliedSourcesSurviveStoreRecreationAndCanBeRestored() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val originalStore = InboxViewPreferencesStore(context)
-        val original = originalStore.includedSourcePackages.value
-        val expected = linkedSetOf("example.alpha", "example.beta")
+        val original = originalStore.includedSourceKeys.value
+        val expected = linkedSetOf(
+            AppUserKey("UserHandle{0}", "example.alpha"),
+            AppUserKey("UserHandle{10}", "example.alpha"),
+            AppUserKey("UserHandle{0}", "example.beta"),
+        )
 
         try {
-            assertTrue(originalStore.setIncludedSourcePackages(expected + ""))
-            assertEquals(expected, InboxViewPreferencesStore(context).includedSourcePackages.value)
+            assertTrue(originalStore.setIncludedSources(expected))
+            assertEquals(expected, InboxViewPreferencesStore(context).includedSourceKeys.value)
         } finally {
-            assertTrue(InboxViewPreferencesStore(context).setIncludedSourcePackages(original))
+            assertTrue(InboxViewPreferencesStore(context).setIncludedSources(original))
         }
 
-        assertEquals(original, InboxViewPreferencesStore(context).includedSourcePackages.value)
+        assertEquals(original, InboxViewPreferencesStore(context).includedSourceKeys.value)
     }
 }

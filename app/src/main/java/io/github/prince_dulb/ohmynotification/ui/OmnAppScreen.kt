@@ -76,6 +76,7 @@ import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationDeri
 import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationState
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
+import io.github.prince_dulb.ohmynotification.data.AppUserKey
 import io.github.prince_dulb.ohmynotification.data.SourceSummaryRow
 import io.github.prince_dulb.ohmynotification.core.timeline.TimelineGrouper
 import io.github.prince_dulb.ohmynotification.core.timeline.TimelineGroupingCandidate
@@ -101,7 +102,8 @@ data class AppUiState(
 internal fun OmnAppScreen(
     state: AppUiState,
     repository: NotificationRepository,
-    includedSourcePackages: Flow<Set<String>>,
+    includedSourceKeys: Flow<Set<AppUserKey>>,
+    currentUserRef: String,
     currentRuntimeSessionId: String,
     currentListenerConnectionId: String?,
     loadLaunchableSources: () -> List<LaunchableSource>,
@@ -109,34 +111,59 @@ internal fun OmnAppScreen(
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
     onSetSourceExcluded: (String, Boolean) -> Unit,
-    onApplyIncludedSourcePackages: suspend (Set<String>) -> Boolean,
+    onApplyIncludedSources: suspend (Set<AppUserKey>) -> Boolean,
     onOpenNotification: (NotificationItemEntity) -> RuntimeActionStatus,
     onOpenSourceApp: (String) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val sources by repository.sourceSummaries.collectAsStateWithLifecycle(emptyList())
     val exclusions by repository.excludedSources.collectAsStateWithLifecycle(emptyList())
-    val selectedSources by includedSourcePackages.collectAsStateWithLifecycle(emptySet())
+    val selectedSources by includedSourceKeys.collectAsStateWithLifecycle(emptySet())
     val launchableSources by produceState(emptyList<LaunchableSource>()) {
         value = withContext(Dispatchers.IO) { loadLaunchableSources() }
     }
-    val sourceChoices = remember(sources, launchableSources, selectedSources) {
-        val recorded = sources.associateBy(SourceSummaryRow::sourcePackage)
+    val sourceChoices = remember(sources, launchableSources, selectedSources, currentUserRef) {
+        val recorded = sources.associateBy { source ->
+            AppUserKey(source.sourceUserRef, source.sourcePackage)
+        }
         val launchable = launchableSources.associateBy(LaunchableSource::sourcePackage)
-        (launchableSources.map { source -> source.sourcePackage } + recorded.keys + selectedSources)
+        val launchableKeys = launchableSources.map { source ->
+            AppUserKey(currentUserRef, source.sourcePackage)
+        }
+        val allKeys = (launchableKeys + recorded.keys + selectedSources).distinct()
+        val userCountByPackage = allKeys.groupingBy(AppUserKey::sourcePackage).eachCount()
+        allKeys
             .distinct()
-            .map { sourcePackage ->
-                val summary = recorded[sourcePackage]
-                val installed = launchable[sourcePackage]
+            .map { source ->
+                val summary = recorded[source]
+                val installed = launchable[source.sourcePackage]
                 SourceChoice(
-                    sourcePackage = sourcePackage,
-                    sourceLabel = summary?.sourceLabelSnapshot ?: installed?.sourceLabel ?: sourcePackage,
+                    source = source,
+                    sourceLabel = summary?.sourceLabelSnapshot ?: installed?.sourceLabel ?: source.sourcePackage,
+                    profileLabel = when {
+                        userCountByPackage[source.sourcePackage] == 1 -> null
+                        source.sourceUserRef == currentUserRef -> "当前资料"
+                        else -> "其他资料"
+                    },
                     recordCount = summary?.recordCount ?: 0L,
                 )
             }
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, SourceChoice::sourceLabel))
+            .sortedWith(
+                compareBy(String.CASE_INSENSITIVE_ORDER, SourceChoice::sourceLabel)
+                    .thenBy { choice -> choice.source.sourceUserRef },
+            )
     }
-    var filterDraft by remember { mutableStateOf(emptySet<String>()) }
+    val exclusionChoices = remember(sourceChoices) {
+        sourceChoices
+            .groupBy { choice -> choice.source.sourcePackage }
+            .map { (_, choices) ->
+                choices.first().copy(
+                    profileLabel = null,
+                    recordCount = choices.sumOf(SourceChoice::recordCount),
+                )
+            }
+    }
+    var filterDraft by remember { mutableStateOf(emptySet<AppUserKey>()) }
     var filterSaving by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
     val expandedDrawers = remember { mutableStateMapOf<Long, Boolean>() }
@@ -283,11 +310,11 @@ internal fun OmnAppScreen(
         SourceDialog.FILTER -> SourceSelectionDialog(
             title = "只查看这些应用",
             sources = sourceChoices,
-            checkedPackages = filterDraft,
+            checkedSources = filterDraft,
             emptyMeansAll = true,
-            onToggle = { sourcePackage, checked ->
+            onToggle = { source, checked ->
                 filterDraft = filterDraft.toMutableSet().apply {
-                    if (checked) add(sourcePackage) else remove(sourcePackage)
+                    if (checked) add(source) else remove(source)
                 }
             },
             onClear = { filterDraft = emptySet() },
@@ -298,7 +325,7 @@ internal fun OmnAppScreen(
                 if (!filterSaving) {
                     filterSaving = true
                     coroutineScope.launch {
-                        val saved = onApplyIncludedSourcePackages(filterDraft)
+                        val saved = onApplyIncludedSources(filterDraft)
                         filterSaving = false
                         if (saved) dialog = null else snackbar.showSnackbar("查看范围保存失败，仍使用原筛选")
                     }
@@ -307,11 +334,15 @@ internal fun OmnAppScreen(
             onDismiss = { if (!filterSaving) dialog = null },
         )
         SourceDialog.EXCLUDE -> SourceSelectionDialog(
-            title = "不监控这些应用",
-            sources = sourceChoices,
-            checkedPackages = exclusions.mapTo(linkedSetOf()) { it.sourcePackage },
+            title = "不监控这些应用（所有资料）",
+            sources = exclusionChoices,
+            checkedSources = exclusionChoices
+                .asSequence()
+                .map(SourceChoice::source)
+                .filter { source -> exclusions.any { it.sourcePackage == source.sourcePackage } }
+                .toSet(),
             emptyMeansAll = false,
-            onToggle = onSetSourceExcluded,
+            onToggle = { source, excluded -> onSetSourceExcluded(source.sourcePackage, excluded) },
             onClear = null,
             onConfirm = { dialog = null },
             onDismiss = { dialog = null },
@@ -690,9 +721,9 @@ private fun EmptyInbox() {
 private fun SourceSelectionDialog(
     title: String,
     sources: List<SourceChoice>,
-    checkedPackages: Set<String>,
+    checkedSources: Set<AppUserKey>,
     emptyMeansAll: Boolean,
-    onToggle: (String, Boolean) -> Unit,
+    onToggle: (AppUserKey, Boolean) -> Unit,
     onClear: (() -> Unit)?,
     confirmLabel: String = "完成",
     confirmEnabled: Boolean = true,
@@ -708,23 +739,26 @@ private fun SourceSelectionDialog(
                 Text("收到第一条通知后，来源应用会出现在这里。")
             } else {
                 LazyColumn {
-                    items(sources, key = SourceChoice::sourcePackage) { source ->
-                        val checked = source.sourcePackage in checkedPackages
+                    items(sources, key = { source -> source.source }) { source ->
+                        val checked = source.source in checkedSources
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onToggle(source.sourcePackage, !checked) }
+                                .clickable { onToggle(source.source, !checked) }
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Checkbox(
                                 checked = checked,
-                                onCheckedChange = { onToggle(source.sourcePackage, it) },
+                                onCheckedChange = { onToggle(source.source, it) },
                             )
                             Column(Modifier.padding(start = 8.dp)) {
-                                Text(source.sourceLabel)
                                 Text(
-                                    "${source.recordCount} 条 · ${source.sourcePackage}",
+                                    if (source.profileLabel == null) source.sourceLabel
+                                    else "${source.sourceLabel} · ${source.profileLabel}",
+                                )
+                                Text(
+                                    "${source.recordCount} 条 · ${source.source.sourcePackage}",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -760,8 +794,9 @@ private data class TimelineNode(val members: List<NotificationItemEntity>) {
 }
 
 private data class SourceChoice(
-    val sourcePackage: String,
+    val source: AppUserKey,
     val sourceLabel: String,
+    val profileLabel: String?,
     val recordCount: Long,
 )
 

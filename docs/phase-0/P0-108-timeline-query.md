@@ -76,6 +76,10 @@ sha256=59d4ac4c20f5173cbd962ad3746ee34fb3f11b1ae81091b1c2548f10302bef9c
 
 ## 6. 生产候选接入进度
 
-经批准的 Room schema v1 落地后，生产候选已使用 Room `PagingSource` 在查询层执行全部/包名集合筛选，配置为 `pageSize=40`、`prefetchDistance=12`、`maxSize=200`；Compose 不先加载全表再过滤。最后应用的包名集合现保存在独立的应用私有 `SharedPreferences` 中，受全量数据提取排除规则保护，不写监控排除策略、不触发后台任务。筛选弹窗使用草稿，只有用户点击“应用”并成功持久化后才切换查询；取消不改变当前集合，空集合仍表示查看全部。
+经批准的 Room schema v1 落地后，生产候选已使用 Room `PagingSource` 在查询层执行全部/复合 `AppUserKey` 集合筛选，配置为 `pageSize=40`、`prefetchDistance=12`、`maxSize=200`；Compose 不先加载全表再过滤。非空查询为每个已选来源绑定精确的 `sourcePackage + sourceUserRef` 对，避免同包名的个人资料与工作资料互相命中。来源目录也按复合键归并；同包出现多个资料时，筛选面板显示“当前资料/其他资料”辅助区分。
 
-目标设备上的定向 instrumentation 测试已完成“保存两个合成包名 → 新建仓储实例读取 → 恢复用户原值 → 再次新建实例核对”闭环，结果通过，最终 `includedSourceFilterCount=0`，没有留下测试筛选。当前生产查询仍只使用包名，没有实现 A12 完整的 `sourceUser + sourcePackage` 粒度；工作资料隔离、真实 UI 用户验收和 release 10,000 条预算仍保持未完成。
+最后应用的复合来源集合保存在独立的应用私有 `SharedPreferences` 中，以长度前缀编码避免分隔符歧义，并受全量数据提取排除规则保护；旧 Phase 0 的纯包名偏好只读兼容为当前 Android 用户，用户下次应用筛选后写入复合键。该状态不写监控排除策略、不触发后台任务。筛选弹窗使用草稿，只有用户点击“应用”并成功持久化后才切换查询；取消不改变当前集合，空集合仍表示查看全部。
+
+纯 JVM 测试已核对复合键编解码、稳定 SQL 和每个 OR 分支的精确绑定参数；同包不同用户的内存 Room instrumentation 用例已编译进入测试 APK，但本轮为避免在用户桌面重新引入测试应用而未执行。此前目标设备上的偏好重建测试已完成“保存合成集合 → 新建仓储实例读取 → 恢复用户原值 → 再次新建实例核对”闭环。最新主 APK 覆盖安装后 `includedSourceFilterCount=0`，没有留下测试筛选。真实工作资料 UI 验收、instrumentation 执行和 release 10,000 条预算仍保持未完成。
+
+A02 监控排除仍按整个包名作用于所有资料，并在界面中明确标为“所有资料”。把它升级为 `AppUserKey` 需要修改 `excluded_sources` 的主键与持久策略模型，属于新的 Room schema/数据迁移审批，不与本次 A12 查询改造混做。

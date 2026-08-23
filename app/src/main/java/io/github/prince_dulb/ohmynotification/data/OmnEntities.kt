@@ -69,7 +69,18 @@ data class ExcludedSourceEntity(
 
 data class SourceSummaryRow(
     val sourcePackage: String,
+    val sourceUserRef: String,
     val sourceLabelSnapshot: String?,
     val recordCount: Long,
     val latestTimeEpochMillis: Long,
 )
+
+data class AppUserKey(
+    val sourceUserRef: String,
+    val sourcePackage: String,
+) {
+    init {
+        require(sourceUserRef.isNotBlank())
+        require(sourcePackage.isNotBlank())
+    }
+}

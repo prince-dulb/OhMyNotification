@@ -5,6 +5,8 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.room.withTransaction
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStore
 import io.github.prince_dulb.ohmynotification.capture.SnapshotResult
@@ -49,7 +51,7 @@ class NotificationRepository(
     fun healthEvidenceSince(startEpochMillis: Long): Flow<List<HealthEvidenceEntity>> =
         dao.observeHealthEvidenceSince(startEpochMillis)
 
-    fun pagedItems(sourcePackages: Set<String>): Flow<PagingData<NotificationItemEntity>> = Pager(
+    fun pagedItems(sources: Set<AppUserKey>): Flow<PagingData<NotificationItemEntity>> = Pager(
         config = PagingConfig(
             pageSize = 40,
             prefetchDistance = 12,
@@ -57,8 +59,8 @@ class NotificationRepository(
             maxSize = 200,
         ),
         pagingSourceFactory = {
-            if (sourcePackages.isEmpty()) dao.pageAllItems()
-            else dao.pageItemsFromSources(sourcePackages.sorted())
+            if (sources.isEmpty()) dao.pageAllItems()
+            else dao.pageItemsFromSources(buildPageItemsFromSourcesQuery(sources))
         },
     ).flow
 
@@ -219,4 +221,22 @@ class NotificationRepository(
         const val HEALTH_EVIDENCE_LIMIT = 10_000
         const val HEALTH_TRIM_INTERVAL = 256L
     }
+}
+
+internal fun buildPageItemsFromSourcesQuery(sources: Set<AppUserKey>): SupportSQLiteQuery {
+    require(sources.isNotEmpty())
+    val ordered = sources.sortedWith(
+        compareBy(AppUserKey::sourcePackage, AppUserKey::sourceUserRef),
+    )
+    val where = ordered.joinToString(separator = " OR ") {
+        "(sourcePackage = ? AND sourceUserRef = ?)"
+    }
+    val arguments = ordered.flatMap { source ->
+        listOf(source.sourcePackage, source.sourceUserRef)
+    }.toTypedArray()
+    return SimpleSQLiteQuery(
+        "SELECT * FROM notification_items WHERE $where " +
+            "ORDER BY sortTimeEpochMillis DESC, itemId DESC",
+        arguments,
+    )
 }

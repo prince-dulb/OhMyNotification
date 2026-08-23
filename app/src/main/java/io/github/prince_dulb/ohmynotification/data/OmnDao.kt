@@ -6,7 +6,9 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.Update
+import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -19,14 +21,8 @@ interface OmnDao {
     )
     fun pageAllItems(): PagingSource<Int, NotificationItemEntity>
 
-    @Query(
-        """
-        SELECT * FROM notification_items
-        WHERE sourcePackage IN (:sourcePackages)
-        ORDER BY sortTimeEpochMillis DESC, itemId DESC
-        """,
-    )
-    fun pageItemsFromSources(sourcePackages: List<String>): PagingSource<Int, NotificationItemEntity>
+    @RawQuery(observedEntities = [NotificationItemEntity::class])
+    fun pageItemsFromSources(query: SupportSQLiteQuery): PagingSource<Int, NotificationItemEntity>
 
     @Query(
         """
@@ -68,12 +64,13 @@ interface OmnDao {
     @Query(
         """
         SELECT sourcePackage,
+               sourceUserRef,
                MAX(sourceLabelSnapshot) AS sourceLabelSnapshot,
                COUNT(*) AS recordCount,
                MAX(sortTimeEpochMillis) AS latestTimeEpochMillis
         FROM notification_items
-        GROUP BY sourcePackage
-        ORDER BY latestTimeEpochMillis DESC, sourcePackage ASC
+        GROUP BY sourcePackage, sourceUserRef
+        ORDER BY latestTimeEpochMillis DESC, sourcePackage ASC, sourceUserRef ASC
         """,
     )
     fun observeSourceSummaries(): Flow<List<SourceSummaryRow>>

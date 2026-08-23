@@ -49,8 +49,9 @@ class MainActivity : ComponentActivity() {
                 OmnAppScreen(
                     state = uiState.value,
                     repository = (application as OmnApplication).graph.repository,
-                    includedSourcePackages =
-                        (application as OmnApplication).graph.inboxViewPreferencesStore.includedSourcePackages,
+                    includedSourceKeys =
+                        (application as OmnApplication).graph.inboxViewPreferencesStore.includedSourceKeys,
+                    currentUserRef = android.os.Process.myUserHandle().toString(),
                     currentRuntimeSessionId = (application as OmnApplication).graph.runtimeSessionId,
                     currentListenerConnectionId = ListenerRuntimeState.connectionId(),
                     loadLaunchableSources =
@@ -59,8 +60,8 @@ class MainActivity : ComponentActivity() {
                     onRequestStatusNotification = ::requestStatusNotificationPermission,
                     onOpenStatusChannel = ::openStatusNotificationChannel,
                     onSetSourceExcluded = ::setSourceExcluded,
-                    onApplyIncludedSourcePackages =
-                        (application as OmnApplication).graph.inboxViewPreferencesStore::setIncludedSourcePackages,
+                    onApplyIncludedSources =
+                        (application as OmnApplication).graph.inboxViewPreferencesStore::setIncludedSources,
                     onOpenNotification = ::openNotification,
                     onOpenSourceApp = ::openSourceApp,
                 )
