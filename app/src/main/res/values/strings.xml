@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">救救我的通知！</string>
-    <string name="phase_zero_eyebrow">PHASE 0</string>
-    <string name="phase_zero_title">工程基线已就绪</string>
-    <string name="phase_zero_body">这是技术验证壳。通知监听、常驻状态与本地存储尚未启用。</string>
-    <string name="phase_zero_status_label">当前阶段</string>
-    <string name="phase_zero_status_value">验证致命技术假设</string>
+    <string name="inbox_eyebrow">通知收件箱</string>
+    <string name="health_confirmed">正在记录通知</string>
+    <string name="health_unconfirmed">尚未确认正在记录</string>
+    <string name="health_notification_access">通知使用权</string>
+    <string name="health_listener_connection">监听连接</string>
+    <string name="health_status_notification">常驻状态通知</string>
+    <string name="health_available">正常</string>
+    <string name="health_unavailable">不可用</string>
+    <string name="action_grant_notification_access">开启通知使用权</string>
+    <string name="action_grant_status_notification">允许常驻状态通知</string>
+    <string name="inbox_empty_title">等待第一条真实通知</string>
+    <string name="inbox_empty_body">保存成功后，通知会按时间排列在这里。</string>
 </resources>

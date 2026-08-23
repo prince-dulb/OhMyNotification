@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Oh My Notification!</string>
-    <string name="phase_zero_eyebrow">PHASE 0</string>
-    <string name="phase_zero_title">Project baseline ready</string>
-    <string name="phase_zero_body">This is a technical validation shell. Notification capture, persistent status, and local storage are not enabled yet.</string>
-    <string name="phase_zero_status_label">Current stage</string>
-    <string name="phase_zero_status_value">Validating critical assumptions</string>
+    <string name="inbox_eyebrow">Notification inbox</string>
+    <string name="health_confirmed">Recording notifications</string>
+    <string name="health_unconfirmed">Recording is not confirmed</string>
+    <string name="health_notification_access">Notification access</string>
+    <string name="health_listener_connection">Listener connection</string>
+    <string name="health_status_notification">Persistent status notification</string>
+    <string name="health_available">Available</string>
+    <string name="health_unavailable">Unavailable</string>
+    <string name="action_grant_notification_access">Enable notification access</string>
+    <string name="action_grant_status_notification">Allow status notification</string>
+    <string name="inbox_empty_title">Waiting for the first real notification</string>
+    <string name="inbox_empty_body">Committed notifications will appear here in time order.</string>
 </resources>
