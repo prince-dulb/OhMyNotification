@@ -72,4 +72,32 @@ internal object NotificationItemMerger {
         }
         return NotificationMergeOutcome(item, isNew)
     }
+
+    fun hasSameCapturedState(
+        previous: NotificationItemEntity,
+        candidate: NotificationItemEntity,
+    ): Boolean =
+        previous.sourcePackage == candidate.sourcePackage &&
+            previous.sourceUserRef == candidate.sourceUserRef &&
+            previous.systemKey == candidate.systemKey &&
+            previous.notificationId == candidate.notificationId &&
+            previous.tag == candidate.tag &&
+            previous.lifecycleGeneration == candidate.lifecycleGeneration &&
+            previous.firstReceivedAtEpochMillis == candidate.firstReceivedAtEpochMillis &&
+            previous.sortTimeEpochMillis == candidate.sortTimeEpochMillis &&
+            previous.originalPostTimeEpochMillis == candidate.originalPostTimeEpochMillis &&
+            previous.title == candidate.title &&
+            previous.body == candidate.body &&
+            previous.sourceLabelSnapshot == candidate.sourceLabelSnapshot &&
+            previous.contentFingerprint == candidate.contentFingerprint &&
+            previous.normalizationWarnings == candidate.normalizationWarnings &&
+            previous.normalizationStrategyVersion == candidate.normalizationStrategyVersion &&
+            previous.titleOriginalCodePoints == candidate.titleOriginalCodePoints &&
+            previous.bodyOriginalCodePoints == candidate.bodyOriginalCodePoints &&
+            previous.hadContentIntent == candidate.hadContentIntent &&
+            previous.contentIntentCreatorPackage == candidate.contentIntentCreatorPackage &&
+            previous.notificationActionCount == candidate.notificationActionCount &&
+            previous.isRemoved == candidate.isRemoved &&
+            previous.removedAtEpochMillis == candidate.removedAtEpochMillis &&
+            previous.lastRemovalReason == candidate.lastRemovalReason
 }

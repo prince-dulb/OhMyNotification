@@ -36,6 +36,7 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     private fun readStats(context: Context): JSONObject {
         val database = OmnDatabase.get(context).openHelper.readableDatabase
         val graph = (context.applicationContext as OmnApplication).graph
+        val runtimeArgs = arrayOf(graph.runtimeSessionId)
         return JSONObject()
             .put("status", "OK")
             .put("listenerConnected", ListenerRuntimeState.isConnected())
@@ -66,10 +67,50 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
                 "notificationCommitEvidenceCount",
                 database.scalar("SELECT COUNT(*) FROM health_evidence WHERE kind = 'NOTIFICATION_COMMITTED'"),
             )
+            .put(
+                "currentRuntimeEvidenceCount",
+                database.scalar(
+                    "SELECT COUNT(*) FROM health_evidence WHERE runtimeSessionId = ?",
+                    runtimeArgs,
+                ),
+            )
+            .put(
+                "currentRuntimeListenerConnectedEvidenceCount",
+                database.scalar(
+                    """
+                    SELECT COUNT(*) FROM health_evidence
+                    WHERE runtimeSessionId = ? AND kind = 'LISTENER_CONNECTED'
+                    """.trimIndent(),
+                    runtimeArgs,
+                ),
+            )
+            .put(
+                "currentRuntimeCommitEvidenceCount",
+                database.scalar(
+                    """
+                    SELECT COUNT(*) FROM health_evidence
+                    WHERE runtimeSessionId = ? AND kind = 'NOTIFICATION_COMMITTED'
+                    """.trimIndent(),
+                    runtimeArgs,
+                ),
+            )
+            .put(
+                "currentRuntimeDistinctCommittedItemCount",
+                database.scalar(
+                    """
+                    SELECT COUNT(DISTINCT itemId) FROM health_evidence
+                    WHERE runtimeSessionId = ? AND kind = 'NOTIFICATION_COMMITTED'
+                    """.trimIndent(),
+                    runtimeArgs,
+                ),
+            )
     }
 
-    private fun androidx.sqlite.db.SupportSQLiteDatabase.scalar(query: String): Long =
-        query(query).use { cursor ->
+    private fun androidx.sqlite.db.SupportSQLiteDatabase.scalar(
+        query: String,
+        bindArgs: Array<out Any?> = emptyArray(),
+    ): Long =
+        query(query, bindArgs).use { cursor ->
             if (cursor.moveToFirst()) cursor.getLong(0) else 0L
         }
 

@@ -13,6 +13,7 @@ import android.os.Looper
 import io.github.prince_dulb.ohmynotification.MainActivity
 import io.github.prince_dulb.ohmynotification.R
 import io.github.prince_dulb.ohmynotification.data.NotificationCommit
+import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 
 class StatusNotificationController(private val context: Context) {
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
@@ -40,9 +41,18 @@ class StatusNotificationController(private val context: Context) {
     }
 
     @Synchronized
-    fun onConnectionChanged(isConnected: Boolean, currentRecordCount: Long? = null) {
+    fun onConnectionChanged(
+        isConnected: Boolean,
+        currentRecordCount: Long? = null,
+        latestItem: NotificationItemEntity? = null,
+    ) {
         connected = isConnected
         if (currentRecordCount != null) recordCount = currentRecordCount
+        if (latestItem != null) {
+            latestSource = latestItem.sourceLabelSnapshot ?: latestItem.sourcePackage
+            latestTitle = latestItem.title
+            latestEventTimeEpochMillis = latestItem.firstReceivedAtEpochMillis
+        }
         schedule(immediate = true)
     }
 
@@ -74,23 +84,30 @@ class StatusNotificationController(private val context: Context) {
         ) {
             return
         }
-        val stateText = if (connected) {
+        val summaryText = if (connected) {
             context.getString(R.string.status_connected, recordCount)
         } else {
             context.getString(R.string.status_disconnected, recordCount)
         }
         val source = latestSource
-        val privateDetail = listOfNotNull(source, latestTitle)
+        val privateTitle = if (connected) {
+            context.getString(R.string.status_title_connected)
+        } else {
+            context.getString(R.string.status_title_disconnected)
+        }
+        val privateDetail = listOfNotNull(summaryText, source, latestTitle)
             .joinToString(context.getString(R.string.status_detail_separator))
             .ifBlank { context.getString(R.string.status_waiting) }
-        val publicDetail = source ?: context.getString(R.string.status_waiting)
+        val publicDetail = source?.let { recentSource ->
+            context.getString(R.string.status_public_recent_source, recentSource)
+        } ?: summaryText
         val publicVersion = baseBuilder()
-            .setContentTitle(stateText)
+            .setContentTitle(privateTitle)
             .setContentText(publicDetail)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .build()
         val notification = baseBuilder()
-            .setContentTitle(stateText)
+            .setContentTitle(privateTitle)
             .setContentText(privateDetail)
             .setStyle(Notification.BigTextStyle().bigText(privateDetail))
             .setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -103,7 +120,7 @@ class StatusNotificationController(private val context: Context) {
         .setSmallIcon(R.drawable.ic_status_notification)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
-        .setCategory(Notification.CATEGORY_SERVICE)
+        .setCategory(Notification.CATEGORY_STATUS)
         .apply {
             latestEventTimeEpochMillis?.let { eventTime ->
                 setWhen(eventTime)

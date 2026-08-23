@@ -74,6 +74,40 @@ class NotificationItemMergerTest {
         assertFalse(result.item.isRemoved)
     }
 
+    @Test
+    fun duplicateCaptureStateIgnoresCallbackBookkeepingOnly() {
+        val original = NotificationItemMerger.merge(
+            previous = null,
+            observation = observation(observedAt = 2_000L, postTime = 1_000L),
+            content = content(originalPostTime = 1_000L, title = "same"),
+        ).item.copy(itemId = 42L)
+        val duplicate = NotificationItemMerger.merge(
+            previous = original,
+            observation = observation(observedAt = 3_000L, postTime = 1_000L),
+            content = content(originalPostTime = 1_000L, title = "same"),
+        ).item
+
+        assertTrue(NotificationItemMerger.hasSameCapturedState(original, duplicate))
+        assertEquals(2_000L, original.lastUpdatedAtEpochMillis)
+        assertEquals(3_000L, duplicate.lastUpdatedAtEpochMillis)
+    }
+
+    @Test
+    fun duplicateCaptureStateDetectsVisibleContentChange() {
+        val original = NotificationItemMerger.merge(
+            previous = null,
+            observation = observation(observedAt = 2_000L, postTime = 1_000L),
+            content = content(originalPostTime = 1_000L, title = "before"),
+        ).item.copy(itemId = 42L)
+        val updated = NotificationItemMerger.merge(
+            previous = original,
+            observation = observation(observedAt = 3_000L, postTime = 1_000L),
+            content = content(originalPostTime = 1_000L, title = "after"),
+        ).item
+
+        assertFalse(NotificationItemMerger.hasSameCapturedState(original, updated))
+    }
+
     private fun observation(observedAt: Long, postTime: Long) = NotificationObservation(
         runtimeSessionId = "runtime",
         listenerConnectionId = "connection",

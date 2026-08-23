@@ -16,8 +16,11 @@
     <string name="notification_listener_label">救救我的通知！监听器</string>
     <string name="status_channel_name">记录状态</string>
     <string name="status_channel_description">低打扰地显示通知监听与记录状态</string>
-    <string name="status_connected">正在记录 · 已保存 %1$d 条</string>
+    <string name="status_title_connected">正在抢救通知</string>
+    <string name="status_title_disconnected">救援中断，点此检查</string>
+    <string name="status_connected">已救回 %1$d 条</string>
     <string name="status_disconnected">监听未连接 · 已保存 %1$d 条</string>
+    <string name="status_public_recent_source">最近来源：%1$s</string>
     <string name="status_waiting">等待下一条通知</string>
     <string name="status_detail_separator"> · </string>
 </resources>

@@ -121,6 +121,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
                 graph.statusNotificationController.onConnectionChanged(
                     isConnected = true,
                     currentRecordCount = graph.repository.currentItemCount(),
+                    latestItem = graph.repository.latestItem(),
                 )
             }
             is ListenerWork.Captured -> {

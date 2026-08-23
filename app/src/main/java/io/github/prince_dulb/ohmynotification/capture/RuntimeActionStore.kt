@@ -10,38 +10,29 @@ enum class RuntimeActionStatus {
     SECURITY_REJECTED,
 }
 
-data class RuntimeActionKey(
-    val runtimeSessionId: String,
-    val systemKey: String,
-)
-
 class RuntimeActionStore(private val maxHandles: Int = 512) {
     init {
         require(maxHandles > 0)
     }
 
-    private val handles = object : LinkedHashMap<RuntimeActionKey, PendingIntent>(maxHandles + 1, 0.75f, false) {
+    private val handles = object : LinkedHashMap<Long, PendingIntent>(maxHandles + 1, 0.75f, true) {
         override fun removeEldestEntry(
-            eldest: MutableMap.MutableEntry<RuntimeActionKey, PendingIntent>?,
+            eldest: MutableMap.MutableEntry<Long, PendingIntent>?,
         ): Boolean = size > maxHandles
     }
 
     @Synchronized
-    fun put(key: RuntimeActionKey, action: PendingIntent?) {
-        if (action != null) handles[key] = action
+    fun put(itemId: Long, action: PendingIntent?) {
+        require(itemId > 0L)
+        if (action == null) handles.remove(itemId) else handles[itemId] = action
     }
 
     @Synchronized
-    fun remove(key: RuntimeActionKey) {
-        handles.remove(key)
-    }
+    fun contains(itemId: Long): Boolean = itemId in handles
 
     @Synchronized
-    fun contains(key: RuntimeActionKey): Boolean = key in handles
-
-    @Synchronized
-    fun sendFromVisibleActivity(key: RuntimeActionKey): RuntimeActionStatus {
-        val action = handles[key] ?: return RuntimeActionStatus.NOT_FOUND
+    fun sendFromVisibleActivity(itemId: Long): RuntimeActionStatus {
+        val action = handles[itemId] ?: return RuntimeActionStatus.NOT_FOUND
         val options = ActivityOptions.makeBasic().apply {
             pendingIntentBackgroundActivityStartMode =
                 ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
@@ -50,7 +41,7 @@ class RuntimeActionStore(private val maxHandles: Int = 512) {
             action.send(options.toBundle())
             RuntimeActionStatus.ACCEPTED
         } catch (_: PendingIntent.CanceledException) {
-            handles.remove(key)
+            handles.remove(itemId)
             RuntimeActionStatus.CANCELED
         } catch (_: SecurityException) {
             RuntimeActionStatus.SECURITY_REJECTED

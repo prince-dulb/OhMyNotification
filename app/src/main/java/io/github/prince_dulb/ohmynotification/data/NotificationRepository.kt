@@ -5,7 +5,6 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.room.withTransaction
-import io.github.prince_dulb.ohmynotification.capture.RuntimeActionKey
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStore
 import io.github.prince_dulb.ohmynotification.capture.SnapshotResult
@@ -45,6 +44,8 @@ class NotificationRepository(
 
     suspend fun currentItemCount(): Long = dao.itemCount()
 
+    suspend fun latestItem(): NotificationItemEntity? = dao.latestItem()
+
     fun healthEvidenceSince(startEpochMillis: Long): Flow<List<HealthEvidenceEntity>> =
         dao.observeHealthEvidenceSince(startEpochMillis)
 
@@ -75,9 +76,8 @@ class NotificationRepository(
             }
         }
 
-        val key = RuntimeActionKey(observation.runtimeSessionId, observation.identity.systemKey)
         if (observation.callbackKind != ObservedCallbackKind.REMOVED && commit != null) {
-            runtimeActionStore.put(key, captured.runtimeAction)
+            runtimeActionStore.put(commit.item.itemId, captured.runtimeAction)
         }
         return commit
     }
@@ -119,13 +119,9 @@ class NotificationRepository(
     }
 
     fun sendRuntimeAction(item: NotificationItemEntity): RuntimeActionStatus =
-        runtimeActionStore.sendFromVisibleActivity(
-            RuntimeActionKey(item.runtimeSessionIdAtLastCapture, item.systemKey),
-        )
+        runtimeActionStore.sendFromVisibleActivity(item.itemId)
 
-    fun hasRuntimeAction(item: NotificationItemEntity): Boolean = runtimeActionStore.contains(
-        RuntimeActionKey(item.runtimeSessionIdAtLastCapture, item.systemKey),
-    )
+    fun hasRuntimeAction(item: NotificationItemEntity): Boolean = runtimeActionStore.contains(item.itemId)
 
     private suspend fun commitContent(
         observation: NotificationObservation,
@@ -142,6 +138,13 @@ class NotificationRepository(
         )
         val outcome = NotificationItemMerger.merge(previous, observation, normalized.content)
         val entity = outcome.item
+        if (
+            !outcome.isNewItem &&
+            previous != null &&
+            NotificationItemMerger.hasSameCapturedState(previous, entity)
+        ) {
+            return NotificationCommit(previous, NotificationChangeKind.NO_CONTENT_CHANGE)
+        }
         val itemId = if (outcome.isNewItem) dao.insertItem(entity) else {
             dao.updateItem(entity)
             entity.itemId

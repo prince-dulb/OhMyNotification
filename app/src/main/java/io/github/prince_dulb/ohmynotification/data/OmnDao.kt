@@ -99,6 +99,15 @@ interface OmnDao {
     @Query("SELECT COUNT(*) FROM notification_items")
     suspend fun itemCount(): Long
 
+    @Query(
+        """
+        SELECT * FROM notification_items
+        ORDER BY sortTimeEpochMillis DESC, itemId DESC
+        LIMIT 1
+        """,
+    )
+    suspend fun latestItem(): NotificationItemEntity?
+
     @Query("SELECT * FROM excluded_sources ORDER BY sourcePackage ASC")
     fun observeExcludedSources(): Flow<List<ExcludedSourceEntity>>
 

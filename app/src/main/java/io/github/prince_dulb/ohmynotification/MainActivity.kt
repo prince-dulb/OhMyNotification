@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
                 graph.statusNotificationController.onConnectionChanged(
                     isConnected = ListenerRuntimeState.isConnected(),
                     currentRecordCount = graph.repository.currentItemCount(),
+                    latestItem = graph.repository.latestItem(),
                 )
             }
         }
