@@ -81,6 +81,15 @@ interface OmnDao {
     @Query("SELECT COUNT(*) FROM notification_items")
     fun observeItemCount(): Flow<Long>
 
+    @Query(
+        """
+        SELECT * FROM health_evidence
+        WHERE occurredAtEpochMillis >= :startEpochMillis
+        ORDER BY occurredAtEpochMillis ASC, evidenceId ASC
+        """,
+    )
+    fun observeHealthEvidenceSince(startEpochMillis: Long): Flow<List<HealthEvidenceEntity>>
+
     @Query("SELECT COUNT(*) FROM notification_items")
     suspend fun itemCount(): Long
 

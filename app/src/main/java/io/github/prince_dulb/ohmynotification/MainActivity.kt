@@ -28,8 +28,17 @@ class MainActivity : ComponentActivity() {
     }
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) {
+    ) { granted ->
         refreshUiState()
+        if (granted) {
+            val graph = (application as OmnApplication).graph
+            graph.serialScope.launch {
+                graph.statusNotificationController.onConnectionChanged(
+                    isConnected = ListenerRuntimeState.isConnected(),
+                    currentRecordCount = graph.repository.currentItemCount(),
+                )
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,10 +49,14 @@ class MainActivity : ComponentActivity() {
                 OmnAppScreen(
                     state = uiState.value,
                     repository = (application as OmnApplication).graph.repository,
+                    loadLaunchableSources =
+                        (application as OmnApplication).graph.sourceLabelResolver::launchableSources,
                     onOpenNotificationAccess = ::openNotificationAccessSettings,
                     onRequestStatusNotification = ::requestStatusNotificationPermission,
+                    onOpenStatusChannel = ::openStatusNotificationChannel,
                     onSetSourceExcluded = ::setSourceExcluded,
                     onOpenNotification = ::openNotification,
+                    onOpenSourceApp = ::openSourceApp,
                 )
             }
         }
@@ -67,6 +80,7 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshUiState() {
         val notificationManager = getSystemService(NotificationManager::class.java)
+        val graph = (application as OmnApplication).graph
         uiState.value = AppUiState(
             listenerAccessGranted = notificationManager.isNotificationListenerAccessGranted(
                 OmnNotificationListenerComponent.componentName(this),
@@ -74,7 +88,10 @@ class MainActivity : ComponentActivity() {
             listenerConnected = ListenerRuntimeState.isConnected(),
             statusNotificationGranted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED,
+            statusNotificationChannelEnabled =
+                graph.statusNotificationController.isChannelEnabled(),
         )
+        graph.serialScope.launch { graph.recordCurrentHealthFacets() }
     }
 
     private fun openNotificationAccessSettings() {
@@ -95,6 +112,18 @@ class MainActivity : ComponentActivity() {
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    private fun openStatusNotificationChannel() {
+        startActivity(
+            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                putExtra(
+                    Settings.EXTRA_CHANNEL_ID,
+                    (application as OmnApplication).graph.statusNotificationController.channelId(),
+                )
+            },
+        )
+    }
+
     private fun setSourceExcluded(sourcePackage: String, excluded: Boolean) {
         (application as OmnApplication).graph.serialScope.launch {
             (application as OmnApplication).graph.repository.setSourceExcluded(sourcePackage, excluded)
@@ -103,4 +132,14 @@ class MainActivity : ComponentActivity() {
 
     private fun openNotification(item: NotificationItemEntity): RuntimeActionStatus =
         (application as OmnApplication).graph.repository.sendRuntimeAction(item)
+
+    private fun openSourceApp(sourcePackage: String): Boolean {
+        val launchIntent = packageManager.getLaunchIntentForPackage(sourcePackage) ?: return false
+        return try {
+            startActivity(launchIntent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        }
+    }
 }

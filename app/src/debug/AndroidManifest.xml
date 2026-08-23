@@ -18,6 +18,7 @@
 
         <activity
             android:name=".phase0.PhaseZeroBilibiliActionActivity"
+            android:enabled="false"
             android:exported="true"
             android:label="@string/phase_zero_bilibili_action_label"
             android:theme="@style/Theme.OhMyNotification">
@@ -38,6 +39,14 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".phase0.MvpDatabaseStatsReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.prince_dulb.ohmynotification.debug.DATABASE_STATS" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

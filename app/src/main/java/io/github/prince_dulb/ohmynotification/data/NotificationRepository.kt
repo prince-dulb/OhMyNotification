@@ -17,8 +17,19 @@ import kotlinx.coroutines.flow.Flow
 
 data class NotificationCommit(
     val item: NotificationItemEntity,
-    val isNewItem: Boolean,
-)
+    val changeKind: NotificationChangeKind,
+) {
+    val isNewItem: Boolean get() = changeKind == NotificationChangeKind.CREATED
+    val updatesStatusSummary: Boolean get() =
+        changeKind == NotificationChangeKind.CREATED || changeKind == NotificationChangeKind.UPDATED
+}
+
+enum class NotificationChangeKind {
+    CREATED,
+    UPDATED,
+    NO_CONTENT_CHANGE,
+    REMOVED,
+}
 
 class NotificationRepository(
     private val database: OmnDatabase,
@@ -34,8 +45,16 @@ class NotificationRepository(
 
     suspend fun currentItemCount(): Long = dao.itemCount()
 
+    fun healthEvidenceSince(startEpochMillis: Long): Flow<List<HealthEvidenceEntity>> =
+        dao.observeHealthEvidenceSince(startEpochMillis)
+
     fun pagedItems(sourcePackages: Set<String>): Flow<PagingData<NotificationItemEntity>> = Pager(
-        config = PagingConfig(pageSize = 40, prefetchDistance = 12, enablePlaceholders = false),
+        config = PagingConfig(
+            pageSize = 40,
+            prefetchDistance = 12,
+            enablePlaceholders = false,
+            maxSize = 200,
+        ),
         pagingSourceFactory = {
             if (sourcePackages.isEmpty()) dao.pageAllItems()
             else dao.pageItemsFromSources(sourcePackages.sorted())
@@ -104,6 +123,10 @@ class NotificationRepository(
             RuntimeActionKey(item.runtimeSessionIdAtLastCapture, item.systemKey),
         )
 
+    fun hasRuntimeAction(item: NotificationItemEntity): Boolean = runtimeActionStore.contains(
+        RuntimeActionKey(item.runtimeSessionIdAtLastCapture, item.systemKey),
+    )
+
     private suspend fun commitContent(
         observation: NotificationObservation,
         sourceLabel: String?,
@@ -117,64 +140,9 @@ class NotificationRepository(
             identity.sourceUserRef,
             identity.systemKey,
         )
-        val content = normalized.content
-        val displayTime = content.originalPostTimeEpochMillis ?: observation.observedAtEpochMillis
-        val isNew = previous == null || previous.isRemoved
-        val entity = if (isNew) {
-            NotificationItemEntity(
-                sourcePackage = identity.sourcePackage,
-                sourceUserRef = identity.sourceUserRef,
-                systemKey = identity.systemKey,
-                notificationId = identity.notificationId,
-                tag = identity.tag,
-                lifecycleGeneration = if (previous == null) 0 else previous.lifecycleGeneration + 1,
-                firstReceivedAtEpochMillis = observation.observedAtEpochMillis,
-                lastUpdatedAtEpochMillis = observation.observedAtEpochMillis,
-                sortTimeEpochMillis = displayTime,
-                originalPostTimeEpochMillis = content.originalPostTimeEpochMillis,
-                title = content.title,
-                body = content.body,
-                sourceLabelSnapshot = content.sourceLabelSnapshot,
-                contentFingerprint = content.contentFingerprint,
-                normalizationWarnings = content.warnings.joinToString(",") { it.name },
-                normalizationStrategyVersion = content.strategyVersion,
-                titleOriginalCodePoints = content.titleOriginalCodePoints,
-                bodyOriginalCodePoints = content.bodyOriginalCodePoints,
-                hadContentIntent = observation.actionCapabilities.hasContentIntent,
-                contentIntentCreatorPackage = observation.actionCapabilities.contentIntentCreatorPackage,
-                notificationActionCount = observation.actionCapabilities.notificationActionCount,
-                isRemoved = false,
-                removedAtEpochMillis = null,
-                lastRemovalReason = null,
-                lastCallbackKind = observation.callbackKind.name,
-                runtimeSessionIdAtLastCapture = observation.runtimeSessionId,
-            )
-        } else {
-            requireNotNull(previous).copy(
-                notificationId = identity.notificationId,
-                tag = identity.tag,
-                lastUpdatedAtEpochMillis = maxOf(
-                    previous.lastUpdatedAtEpochMillis,
-                    observation.observedAtEpochMillis,
-                ),
-                sortTimeEpochMillis = maxOf(previous.sortTimeEpochMillis, displayTime),
-                originalPostTimeEpochMillis = content.originalPostTimeEpochMillis,
-                title = content.title,
-                body = content.body,
-                sourceLabelSnapshot = content.sourceLabelSnapshot ?: previous.sourceLabelSnapshot,
-                contentFingerprint = content.contentFingerprint,
-                normalizationWarnings = content.warnings.joinToString(",") { it.name },
-                normalizationStrategyVersion = content.strategyVersion,
-                titleOriginalCodePoints = content.titleOriginalCodePoints,
-                bodyOriginalCodePoints = content.bodyOriginalCodePoints,
-                hadContentIntent = observation.actionCapabilities.hasContentIntent,
-                contentIntentCreatorPackage = observation.actionCapabilities.contentIntentCreatorPackage,
-                notificationActionCount = observation.actionCapabilities.notificationActionCount,
-                lastCallbackKind = observation.callbackKind.name,
-                runtimeSessionIdAtLastCapture = observation.runtimeSessionId,
-            )
-        }
-        val itemId = if (isNew) dao.insertItem(entity) else {
+        val outcome = NotificationItemMerger.merge(previous, observation, normalized.content)
+        val entity = outcome.item
+        val itemId = if (outcome.isNewItem) dao.insertItem(entity) else {
             dao.updateItem(entity)
             entity.itemId
         }
@@ -189,7 +157,16 @@ class NotificationRepository(
             ),
         )
         trimHealthEvidenceIfNeeded(evidenceId)
-        return NotificationCommit(committed, isNew)
+        val presentationChanged = previous == null ||
+            previous.title != committed.title ||
+            previous.body != committed.body ||
+            previous.sourceLabelSnapshot != committed.sourceLabelSnapshot
+        val changeKind = when {
+            outcome.isNewItem -> NotificationChangeKind.CREATED
+            presentationChanged -> NotificationChangeKind.UPDATED
+            else -> NotificationChangeKind.NO_CONTENT_CHANGE
+        }
+        return NotificationCommit(committed, changeKind)
     }
 
     private suspend fun commitRemoval(observation: NotificationObservation): NotificationCommit? {
@@ -199,7 +176,9 @@ class NotificationRepository(
             identity.sourceUserRef,
             identity.systemKey,
         ) ?: return null
-        if (previous.isRemoved) return NotificationCommit(previous, isNewItem = false)
+        if (previous.isRemoved) {
+            return NotificationCommit(previous, NotificationChangeKind.NO_CONTENT_CHANGE)
+        }
 
         val removed = previous.copy(
             lastUpdatedAtEpochMillis = maxOf(
@@ -223,7 +202,7 @@ class NotificationRepository(
             ),
         )
         trimHealthEvidenceIfNeeded(evidenceId)
-        return NotificationCommit(removed, isNewItem = false)
+        return NotificationCommit(removed, NotificationChangeKind.REMOVED)
     }
 
     private suspend fun trimHealthEvidenceIfNeeded(latestEvidenceId: Long) {

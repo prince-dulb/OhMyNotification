@@ -37,6 +37,9 @@ class RuntimeActionStore(private val maxHandles: Int = 512) {
     }
 
     @Synchronized
+    fun contains(key: RuntimeActionKey): Boolean = key in handles
+
+    @Synchronized
     fun sendFromVisibleActivity(key: RuntimeActionKey): RuntimeActionStatus {
         val action = handles[key] ?: return RuntimeActionStatus.NOT_FOUND
         val options = ActivityOptions.makeBasic().apply {

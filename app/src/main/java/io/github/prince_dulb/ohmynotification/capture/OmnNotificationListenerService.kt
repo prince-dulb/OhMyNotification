@@ -5,45 +5,40 @@ import android.service.notification.StatusBarNotification
 import io.github.prince_dulb.ohmynotification.OmnApplication
 import io.github.prince_dulb.ohmynotification.core.model.ObservedCallbackKind
 import java.util.UUID
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class OmnNotificationListenerService : NotificationListenerService() {
     private val graph get() = (application as OmnApplication).graph
+    private val workQueue = Channel<ListenerWork>(capacity = WORK_QUEUE_CAPACITY)
 
     @Volatile
     private var listenerConnectionId: String? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        graph.serialScope.launch {
+            for (work in workQueue) process(work)
+        }
+    }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         val connectionId = UUID.randomUUID().toString()
         listenerConnectionId = connectionId
         ListenerRuntimeState.setConnected(true)
-        graph.serialScope.launch {
-            graph.repository.recordHealth(
-                kind = "LISTENER_CONNECTED",
-                occurredAtEpochMillis = System.currentTimeMillis(),
-                runtimeSessionId = graph.runtimeSessionId,
-                listenerConnectionId = connectionId,
-            )
-            graph.statusNotificationController.onConnectionChanged(
-                isConnected = true,
-                currentRecordCount = graph.repository.currentItemCount(),
-            )
-        }
+        enqueue(ListenerWork.Connected(connectionId, System.currentTimeMillis()))
 
         runCatching { activeNotifications?.toList().orEmpty() }
             .onSuccess { notifications ->
-                notifications.forEach { notification ->
+                notifications.sortedBy(StatusBarNotification::getPostTime).forEach { notification ->
                     capture(notification, ObservedCallbackKind.RECOVERY_SNAPSHOT, null, connectionId)
                 }
-                graph.serialScope.launch {
-                    graph.repository.recordHealth(
-                        kind = "RECOVERY_COMPLETED",
-                        occurredAtEpochMillis = System.currentTimeMillis(),
-                        runtimeSessionId = graph.runtimeSessionId,
-                        listenerConnectionId = connectionId,
-                    )
-                }
+                enqueue(ListenerWork.RecoveryCompleted(connectionId, System.currentTimeMillis()))
+            }
+            .onFailure {
+                enqueue(ListenerWork.RecoveryFailed(connectionId, System.currentTimeMillis()))
             }
     }
 
@@ -51,15 +46,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
         val connectionId = listenerConnectionId
         listenerConnectionId = null
         ListenerRuntimeState.setConnected(false)
-        graph.serialScope.launch {
-            graph.repository.recordHealth(
-                kind = "LISTENER_DISCONNECTED",
-                occurredAtEpochMillis = System.currentTimeMillis(),
-                runtimeSessionId = graph.runtimeSessionId,
-                listenerConnectionId = connectionId,
-            )
-            graph.statusNotificationController.onConnectionChanged(isConnected = false)
-        }
+        enqueue(ListenerWork.Disconnected(connectionId, System.currentTimeMillis()))
         super.onListenerDisconnected()
     }
 
@@ -90,6 +77,11 @@ class OmnNotificationListenerService : NotificationListenerService() {
 
     override fun onDestroy() {
         ListenerRuntimeState.setConnected(false)
+        listenerConnectionId?.let { connectionId ->
+            enqueue(ListenerWork.Disconnected(connectionId, System.currentTimeMillis()))
+        }
+        listenerConnectionId = null
+        workQueue.close()
         super.onDestroy()
     }
 
@@ -107,11 +99,70 @@ class OmnNotificationListenerService : NotificationListenerService() {
             removalReason = removalReason,
         )
         if (result !is SnapshotResult.Captured) return
-        graph.serialScope.launch {
-            val label = graph.sourceLabelResolver.resolve(result.observation.identity.sourcePackage)
-            graph.repository.processCaptured(result, label)?.let(
-                graph.statusNotificationController::onCommitted,
-            )
+        enqueue(ListenerWork.Captured(result))
+    }
+
+    private fun enqueue(work: ListenerWork) {
+        if (workQueue.trySend(work).isSuccess) return
+        runCatching {
+            runBlocking { workQueue.send(work) }
         }
+    }
+
+    private suspend fun process(work: ListenerWork) {
+        when (work) {
+            is ListenerWork.Connected -> {
+                graph.repository.recordHealth(
+                    kind = "LISTENER_CONNECTED",
+                    occurredAtEpochMillis = work.observedAtEpochMillis,
+                    runtimeSessionId = graph.runtimeSessionId,
+                    listenerConnectionId = work.connectionId,
+                )
+                graph.statusNotificationController.onConnectionChanged(
+                    isConnected = true,
+                    currentRecordCount = graph.repository.currentItemCount(),
+                )
+            }
+            is ListenerWork.Captured -> {
+                val captured = work.value
+                val label = graph.sourceLabelResolver.resolve(captured.observation.identity.sourcePackage)
+                graph.repository.processCaptured(captured, label)?.let(
+                    graph.statusNotificationController::onCommitted,
+                )
+            }
+            is ListenerWork.RecoveryCompleted -> graph.repository.recordHealth(
+                kind = "RECOVERY_COMPLETED",
+                occurredAtEpochMillis = work.observedAtEpochMillis,
+                runtimeSessionId = graph.runtimeSessionId,
+                listenerConnectionId = work.connectionId,
+            )
+            is ListenerWork.RecoveryFailed -> graph.repository.recordHealth(
+                kind = "RECOVERY_FAILED",
+                occurredAtEpochMillis = work.observedAtEpochMillis,
+                runtimeSessionId = graph.runtimeSessionId,
+                listenerConnectionId = work.connectionId,
+            )
+            is ListenerWork.Disconnected -> {
+                graph.repository.recordHealth(
+                    kind = "LISTENER_DISCONNECTED",
+                    occurredAtEpochMillis = work.observedAtEpochMillis,
+                    runtimeSessionId = graph.runtimeSessionId,
+                    listenerConnectionId = work.connectionId,
+                )
+                graph.statusNotificationController.onConnectionChanged(isConnected = false)
+            }
+        }
+    }
+
+    private sealed interface ListenerWork {
+        data class Connected(val connectionId: String, val observedAtEpochMillis: Long) : ListenerWork
+        data class Captured(val value: SnapshotResult.Captured) : ListenerWork
+        data class RecoveryCompleted(val connectionId: String, val observedAtEpochMillis: Long) : ListenerWork
+        data class RecoveryFailed(val connectionId: String, val observedAtEpochMillis: Long) : ListenerWork
+        data class Disconnected(val connectionId: String?, val observedAtEpochMillis: Long) : ListenerWork
+    }
+
+    private companion object {
+        const val WORK_QUEUE_CAPACITY = 256
     }
 }

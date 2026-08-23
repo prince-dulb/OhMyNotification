@@ -1,6 +1,11 @@
 package io.github.prince_dulb.ohmynotification.ui
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.util.LruCache
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -45,18 +51,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.prince_dulb.ohmynotification.R
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
+import io.github.prince_dulb.ohmynotification.capture.LaunchableSource
+import io.github.prince_dulb.ohmynotification.data.HealthEvidenceEntity
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
 import io.github.prince_dulb.ohmynotification.data.SourceSummaryRow
@@ -65,25 +77,50 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class AppUiState(
     val listenerAccessGranted: Boolean = false,
     val listenerConnected: Boolean = false,
     val statusNotificationGranted: Boolean = false,
+    val statusNotificationChannelEnabled: Boolean = true,
 )
 
 @Composable
 internal fun OmnAppScreen(
     state: AppUiState,
     repository: NotificationRepository,
+    loadLaunchableSources: () -> List<LaunchableSource>,
     onOpenNotificationAccess: () -> Unit,
     onRequestStatusNotification: () -> Unit,
+    onOpenStatusChannel: () -> Unit,
     onSetSourceExcluded: (String, Boolean) -> Unit,
     onOpenNotification: (NotificationItemEntity) -> RuntimeActionStatus,
+    onOpenSourceApp: (String) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val sources by repository.sourceSummaries.collectAsStateWithLifecycle(emptyList())
     val exclusions by repository.excludedSources.collectAsStateWithLifecycle(emptyList())
+    val launchableSources by produceState(emptyList<LaunchableSource>()) {
+        value = withContext(Dispatchers.IO) { loadLaunchableSources() }
+    }
+    val sourceChoices = remember(sources, launchableSources) {
+        val recorded = sources.associateBy(SourceSummaryRow::sourcePackage)
+        val launchable = launchableSources.associateBy(LaunchableSource::sourcePackage)
+        (launchableSources.map { source -> source.sourcePackage } + recorded.keys)
+            .distinct()
+            .map { sourcePackage ->
+                val summary = recorded[sourcePackage]
+                val installed = launchable[sourcePackage]
+                SourceChoice(
+                    sourcePackage = sourcePackage,
+                    sourceLabel = summary?.sourceLabelSnapshot ?: installed?.sourceLabel ?: sourcePackage,
+                    recordCount = summary?.recordCount ?: 0L,
+                )
+            }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, SourceChoice::sourceLabel))
+    }
     var selectedSources by remember { mutableStateOf(emptySet<String>()) }
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
     val expandedDrawers = remember { mutableStateMapOf<Long, Boolean>() }
@@ -92,6 +129,17 @@ internal fun OmnAppScreen(
     val pagingItems = pagingFlow.collectAsLazyPagingItems()
     val loadedItems = pagingItems.itemSnapshotList.items
     val nodes = remember(loadedItems) { groupTimeline(loadedItems) }
+    val healthStart = loadedItems.lastOrNull()?.firstReceivedAtEpochMillis ?: Long.MAX_VALUE
+    val healthEvidence by remember(healthStart) {
+        repository.healthEvidenceSince(healthStart)
+    }.collectAsStateWithLifecycle(emptyList())
+    val firstConnectionByItem = remember(healthEvidence) {
+        healthEvidence
+            .asSequence()
+            .filter { evidence -> evidence.itemId != null && evidence.listenerConnectionId != null }
+            .groupBy(HealthEvidenceEntity::itemId)
+            .mapValues { (_, evidence) -> evidence.first().listenerConnectionId }
+    }
     val listState = rememberLazyListState()
 
     LaunchedEffect(nodes.size, loadedItems.size) {
@@ -120,6 +168,7 @@ internal fun OmnAppScreen(
                         onOpenExclusions = { dialog = SourceDialog.EXCLUDE },
                         onOpenNotificationAccess = onOpenNotificationAccess,
                         onRequestStatusNotification = onRequestStatusNotification,
+                        onOpenStatusChannel = onOpenStatusChannel,
                     )
                 }
 
@@ -129,9 +178,10 @@ internal fun OmnAppScreen(
 
                 itemsIndexed(nodes, key = { _, node -> node.key }) { index, node ->
                     val next = nodes.getOrNull(index + 1)
+                    val anchorConnection = firstConnectionByItem[node.anchor.itemId]
+                    val nextConnection = next?.let { firstConnectionByItem[it.anchor.itemId] }
                     val confirmedToNext = next == null ||
-                        node.anchor.runtimeSessionIdAtLastCapture == next.anchor.runtimeSessionIdAtLastCapture &&
-                        node.anchor.sortTimeEpochMillis - next.anchor.sortTimeEpochMillis <= GROUP_WINDOW_MILLIS
+                        anchorConnection != null && anchorConnection == nextConnection
                     TimelineNodeCard(
                         node = node,
                         confirmedToNext = confirmedToNext,
@@ -149,6 +199,14 @@ internal fun OmnAppScreen(
                                 RuntimeActionStatus.SECURITY_REJECTED -> "系统拒绝了这次跳转"
                             }
                             snackbar.showSnackbar(message)
+                            status
+                        },
+                        hasRuntimeAction = repository::hasRuntimeAction,
+                        onOpenSource = { sourcePackage ->
+                            val opened = onOpenSourceApp(sourcePackage)
+                            snackbar.showSnackbar(
+                                if (opened) "已打开来源应用；这不是原内容的精确跳转" else "来源应用当前无法打开",
+                            )
                         },
                     )
                 }
@@ -173,7 +231,7 @@ internal fun OmnAppScreen(
     when (dialog) {
         SourceDialog.FILTER -> SourceSelectionDialog(
             title = "只查看这些应用",
-            sources = sources,
+            sources = sourceChoices,
             checkedPackages = selectedSources,
             emptyMeansAll = true,
             onToggle = { sourcePackage, checked ->
@@ -186,7 +244,7 @@ internal fun OmnAppScreen(
         )
         SourceDialog.EXCLUDE -> SourceSelectionDialog(
             title = "不监控这些应用",
-            sources = sources,
+            sources = sourceChoices,
             checkedPackages = exclusions.mapTo(linkedSetOf()) { it.sourcePackage },
             emptyMeansAll = false,
             onToggle = onSetSourceExcluded,
@@ -205,6 +263,7 @@ private fun InboxHeader(
     onOpenExclusions: () -> Unit,
     onOpenNotificationAccess: () -> Unit,
     onRequestStatusNotification: () -> Unit,
+    onOpenStatusChannel: () -> Unit,
 ) {
     val healthy = state.listenerAccessGranted && state.listenerConnected
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -236,7 +295,7 @@ private fun InboxHeader(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "通知使用权 ${state.listenerAccessGranted.status()}　监听 ${state.listenerConnected.status()}　常驻通知 ${state.statusNotificationGranted.status()}",
+                    text = "通知使用权 ${state.listenerAccessGranted.status()}　监听 ${state.listenerConnected.status()}\n通知权限 ${state.statusNotificationGranted.status()}　状态渠道 ${state.statusNotificationChannelEnabled.status()}",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -249,6 +308,11 @@ private fun InboxHeader(
         if (!state.statusNotificationGranted) {
             Button(onClick = onRequestStatusNotification, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.action_grant_status_notification))
+            }
+        }
+        if (state.statusNotificationGranted && !state.statusNotificationChannelEnabled) {
+            Button(onClick = onOpenStatusChannel, modifier = Modifier.fillMaxWidth()) {
+                Text("重新开启状态通知渠道")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -268,7 +332,9 @@ private fun TimelineNodeCard(
     confirmedToNext: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onOpen: suspend (NotificationItemEntity) -> Unit,
+    onOpen: suspend (NotificationItemEntity) -> RuntimeActionStatus,
+    hasRuntimeAction: (NotificationItemEntity) -> Boolean,
+    onOpenSource: suspend (String) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
@@ -286,6 +352,12 @@ private fun TimelineNodeCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        SourceAppIcon(
+                            sourcePackage = node.anchor.sourcePackage,
+                            sourceName = node.anchor.sourceName(),
+                            size = 36.dp,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(node.anchor.sourceName(), fontWeight = FontWeight.Bold)
                             Text(
@@ -299,14 +371,29 @@ private fun TimelineNodeCard(
                     if (expanded) {
                         node.members.forEachIndexed { index, item ->
                             if (index > 0) HorizontalDivider()
-                            NotificationEntry(item = item, onOpen = onOpen)
+                            NotificationEntry(
+                                item = item,
+                                onOpen = onOpen,
+                                hasRuntimeAction = hasRuntimeAction,
+                                onOpenSource = onOpenSource,
+                            )
                         }
                     } else {
                         HorizontalDivider()
-                        NotificationEntry(item = node.anchor, onOpen = onOpen)
+                        NotificationEntry(
+                            item = node.anchor,
+                            onOpen = onOpen,
+                            hasRuntimeAction = hasRuntimeAction,
+                            onOpenSource = onOpenSource,
+                        )
                     }
                 } else {
-                    NotificationEntry(item = node.anchor, onOpen = onOpen)
+                    NotificationEntry(
+                        item = node.anchor,
+                        onOpen = onOpen,
+                        hasRuntimeAction = hasRuntimeAction,
+                        onOpenSource = onOpenSource,
+                    )
                 }
             }
         }
@@ -316,19 +403,33 @@ private fun TimelineNodeCard(
 @Composable
 private fun NotificationEntry(
     item: NotificationItemEntity,
-    onOpen: suspend (NotificationItemEntity) -> Unit,
+    onOpen: suspend (NotificationItemEntity) -> RuntimeActionStatus,
+    hasRuntimeAction: (NotificationItemEntity) -> Boolean,
+    onOpenSource: suspend (String) -> Unit,
 ) {
     var launch by remember { mutableStateOf(false) }
+    var openSource by remember { mutableStateOf(false) }
+    var showFallbackDialog by remember { mutableStateOf(false) }
+    var runtimeAvailable by remember(item.itemId, item.lastUpdatedAtEpochMillis) {
+        mutableStateOf(hasRuntimeAction(item))
+    }
     if (launch) {
         LaunchedEffect(item.itemId) {
-            onOpen(item)
+            val status = onOpen(item)
+            if (status != RuntimeActionStatus.ACCEPTED) runtimeAvailable = false
             launch = false
+        }
+    }
+    if (openSource) {
+        LaunchedEffect(item.sourcePackage) {
+            onOpenSource(item.sourcePackage)
+            openSource = false
         }
     }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = item.hadContentIntent) { launch = true }
+            .clickable(enabled = runtimeAvailable) { launch = true }
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -336,7 +437,15 @@ private fun NotificationEntry(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(item.sourceName(), fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SourceAppIcon(
+                    sourcePackage = item.sourcePackage,
+                    sourceName = item.sourceName(),
+                    size = 24.dp,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                Text(item.sourceName(), fontWeight = FontWeight.SemiBold)
+            }
             Text(
                 formatTime(item.sortTimeEpochMillis),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -361,9 +470,49 @@ private fun NotificationEntry(
             )
         }
         Text(
-            text = if (item.hadContentIntent) "点按尝试打开原内容" else "原通知没有提供跳转",
-            color = if (item.hadContentIntent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            text = when {
+                runtimeAvailable -> "点按打开原内容"
+                item.hadContentIntent -> "精确跳转已不在当前进程中"
+                else -> "原通知没有提供精确跳转"
+            },
+            color = if (runtimeAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
             style = MaterialTheme.typography.labelSmall,
+        )
+        if (!runtimeAvailable) {
+            TextButton(onClick = { showFallbackDialog = true }) {
+                Text("查看跳转选项")
+            }
+        }
+    }
+    if (showFallbackDialog) {
+        AlertDialog(
+            onDismissRequest = { showFallbackDialog = false },
+            title = { Text("无法精确打开原内容") },
+            text = {
+                Text(
+                    if (item.hadContentIntent) {
+                        "原通知曾提供跳转，但它只存在于当时的 OMN 进程中。归档记录仍会保留。"
+                    } else {
+                        "原通知没有提供可用的精确跳转。归档记录仍会保留。"
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showFallbackDialog = false
+                        openSource = true
+                    },
+                    modifier = Modifier.semantics {
+                        contentDescription = "仅打开来源应用，可能不会到达原内容"
+                    },
+                ) {
+                    Text("仅打开来源应用")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFallbackDialog = false }) { Text("取消") }
+            },
         )
     }
 }
@@ -396,6 +545,43 @@ private fun HealthRail(confirmed: Boolean) {
 }
 
 @Composable
+private fun SourceAppIcon(
+    sourcePackage: String,
+    sourceName: String,
+    size: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val icon by produceState<ImageBitmap?>(null, sourcePackage) {
+        value = SourceIconCache.load(context, sourcePackage)
+    }
+    val semanticsModifier = modifier
+        .size(size)
+        .semantics { contentDescription = "$sourceName 应用图标" }
+    val bitmap = icon
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            modifier = semanticsModifier,
+        )
+    } else {
+        Surface(
+            modifier = semanticsModifier,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    sourceName.take(1).uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun EmptyInbox() {
     Card {
         Column(
@@ -416,7 +602,7 @@ private fun EmptyInbox() {
 @Composable
 private fun SourceSelectionDialog(
     title: String,
-    sources: List<SourceSummaryRow>,
+    sources: List<SourceChoice>,
     checkedPackages: Set<String>,
     emptyMeansAll: Boolean,
     onToggle: (String, Boolean) -> Unit,
@@ -431,7 +617,7 @@ private fun SourceSelectionDialog(
                 Text("收到第一条通知后，来源应用会出现在这里。")
             } else {
                 LazyColumn {
-                    items(sources, key = SourceSummaryRow::sourcePackage) { source ->
+                    items(sources, key = SourceChoice::sourcePackage) { source ->
                         val checked = source.sourcePackage in checkedPackages
                         Row(
                             modifier = Modifier
@@ -445,7 +631,7 @@ private fun SourceSelectionDialog(
                                 onCheckedChange = { onToggle(source.sourcePackage, it) },
                             )
                             Column(Modifier.padding(start = 8.dp)) {
-                                Text(source.sourceLabelSnapshot ?: source.sourcePackage)
+                                Text(source.sourceLabel)
                                 Text(
                                     "${source.recordCount} 条 · ${source.sourcePackage}",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -471,6 +657,12 @@ private data class TimelineNode(val members: List<NotificationItemEntity>) {
     val key: Long get() = anchor.itemId
 }
 
+private data class SourceChoice(
+    val sourcePackage: String,
+    val sourceLabel: String,
+    val recordCount: Long,
+)
+
 private fun groupTimeline(items: List<NotificationItemEntity>): List<TimelineNode> {
     val consumed = BooleanArray(items.size)
     val nodes = arrayListOf<TimelineNode>()
@@ -484,10 +676,9 @@ private fun groupTimeline(items: List<NotificationItemEntity>): List<TimelineNod
             val candidate = items[scan]
             if (anchor.sortTimeEpochMillis - candidate.sortTimeEpochMillis > GROUP_WINDOW_MILLIS) break
             if (candidate.sourcePackage == anchor.sourcePackage &&
-                candidate.sourceUserRef == anchor.sourceUserRef &&
-                !consumed[scan]
+                candidate.sourceUserRef == anchor.sourceUserRef
             ) {
-                memberIndexes += scan
+                if (!consumed[scan]) memberIndexes += scan
             } else {
                 if (otherApps == MAX_INTERVENING_OTHER_ITEMS) break
                 otherApps += 1
@@ -513,6 +704,29 @@ private fun formatTime(epochMillis: Long): String = TIME_FORMATTER.format(
 )
 
 private enum class SourceDialog { FILTER, EXCLUDE }
+
+private object SourceIconCache {
+    private val icons = LruCache<String, ImageBitmap>(64)
+
+    suspend fun load(context: Context, sourcePackage: String): ImageBitmap? = withContext(Dispatchers.IO) {
+        synchronized(icons) { icons.get(sourcePackage) }?.let { return@withContext it }
+        val bitmap = runCatching {
+            val drawable = context.packageManager.getApplicationIcon(sourcePackage)
+                .constantState
+                ?.newDrawable()
+                ?.mutate()
+                ?: context.packageManager.getApplicationIcon(sourcePackage).mutate()
+            val width = drawable.intrinsicWidth.coerceAtLeast(1).coerceAtMost(192)
+            val height = drawable.intrinsicHeight.coerceAtLeast(1).coerceAtMost(192)
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
+                drawable.setBounds(0, 0, width, height)
+                drawable.draw(AndroidCanvas(output))
+            }.asImageBitmap()
+        }.getOrNull() ?: return@withContext null
+        synchronized(icons) { icons.put(sourcePackage, bitmap) }
+        bitmap
+    }
+}
 
 private val TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 private const val GROUP_WINDOW_MILLIS = 15L * 60L * 1_000L

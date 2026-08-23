@@ -21,6 +21,7 @@ class StatusNotificationController(private val context: Context) {
     private var recordCount = 0L
     private var latestSource: String? = null
     private var latestTitle: String? = null
+    private var latestEventTimeEpochMillis: Long? = null
     private val publishRunnable = Runnable(::publishNow)
 
     init {
@@ -32,6 +33,8 @@ class StatusNotificationController(private val context: Context) {
             ).apply {
                 description = context.getString(R.string.status_channel_description)
                 setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
             },
         )
     }
@@ -43,11 +46,18 @@ class StatusNotificationController(private val context: Context) {
         schedule(immediate = true)
     }
 
+    fun isChannelEnabled(): Boolean =
+        notificationManager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
+
+    fun channelId(): String = CHANNEL_ID
+
     @Synchronized
     fun onCommitted(commit: NotificationCommit) {
+        if (!commit.updatesStatusSummary) return
         if (commit.isNewItem) recordCount += 1
         latestSource = commit.item.sourceLabelSnapshot ?: commit.item.sourcePackage
         latestTitle = commit.item.title
+        latestEventTimeEpochMillis = commit.item.firstReceivedAtEpochMillis
         schedule(immediate = false)
     }
 
@@ -94,6 +104,12 @@ class StatusNotificationController(private val context: Context) {
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setCategory(Notification.CATEGORY_SERVICE)
+        .apply {
+            latestEventTimeEpochMillis?.let { eventTime ->
+                setWhen(eventTime)
+                setShowWhen(true)
+            }
+        }
         .setContentIntent(
             PendingIntent.getActivity(
                 context,
@@ -104,7 +120,7 @@ class StatusNotificationController(private val context: Context) {
         )
 
     private companion object {
-        const val CHANNEL_ID = "omn_runtime_status"
+        const val CHANNEL_ID = "running_status"
         const val NOTIFICATION_ID = 0x0D4E
         const val UPDATE_DEBOUNCE_MILLIS = 750L
     }
