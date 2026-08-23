@@ -1,0 +1,42 @@
+{
+  "datasetId": "timeline-query-v1",
+  "schemaVersion": 1,
+  "seed": 2026082308,
+  "sentinel": "OMN_SYNTHETIC_TIMELINE_QUERY",
+  "baseOrder": [
+    "firstReceivedAtMillis DESC",
+    "ingestSequence DESC",
+    "unsignedCanonicalItemId DESC"
+  ],
+  "grouping": {
+    "strategyVersion": "ANCHOR_V1",
+    "windowMillis": 900000,
+    "maxInterveningOtherItems": 3,
+    "minimumGroupSize": 2
+  },
+  "caseIds": [
+    "same-time-sequence-and-id-tie",
+    "short-a-b-a",
+    "long-a-b-a",
+    "exact-fifteen-minutes-and-three-other-items",
+    "fourth-other-item-stops-scan",
+    "android-user-isolation",
+    "consumed-other-item-still-counts",
+    "source-filter-before-grouping",
+    "page-size-invariance",
+    "single-source-extreme-burst"
+  ],
+  "workloads": {
+    "pageSizes": [1, 10, 37, 100, 257],
+    "fullHistoryCount": 10000,
+    "groupingRandomCount": 1000,
+    "singleSourceBurstCount": 500,
+    "syntheticSources": [
+      "dev.omn.synthetic.alpha",
+      "dev.omn.synthetic.beta",
+      "dev.omn.synthetic.gamma",
+      "dev.omn.synthetic.delta",
+      "dev.omn.synthetic.epsilon"
+    ]
+  }
+}
