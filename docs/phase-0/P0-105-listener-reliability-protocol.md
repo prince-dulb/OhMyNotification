@@ -1,6 +1,6 @@
 # P0-105 / SP-05 监听可靠性与红魔后台策略协议
 
-状态：`[候选] IN_PROGRESS / USER_REBIND_REQUIRED`
+状态：`[候选] IN_PROGRESS / CONTROLLED_RECOVERY_OBSERVED`
 
 建立时间：2026-08-23（Asia/Shanghai）
 
@@ -26,7 +26,7 @@
 .\tools\request-phase0-listener-rebind.ps1 -ResetBinding
 ```
 
-`-ResetBinding` 只调用 Android 34+ 提供的 `requestUnbind()` 与 `requestRebind()`，不改变通知使用权。它仅用于验证宿主处于“已授权但未绑定”状态时能否恢复连接，不得做成无界循环。
+`-ResetBinding` 只调用 Android 34+ 提供的 `requestUnbind()` 与 `requestRebind()`，不改变通知使用权。它仅用于复现实验，不得进入产品恢复路径或做成无界循环；红魔实测 250 ms 配对调用会产生下面记录的时序竞争。
 
 ## 3. 真机矩阵
 
@@ -47,8 +47,10 @@
 
 当前手机 ADB 在线、应用已安装。用户关闭再开启通知使用权后，检查点观察到 `access=true / bound=true / process=true`，监听器随即写入连接与活动通知补扫事件。
 
-随后运行 instrumentation 合同时，Runner 强停产品进程，检查点变为 `access=true / bound=false / process=false`。启动应用并调用 Android `NotificationListenerService.requestRebind()` 后，进程恢复，但红魔在 10 秒观察窗口内仍保持 `bound=false`。2026-08-23 又在 Android 16 真机上验证了一次有界 `requestUnbind()` → 250 ms → `requestRebind()`；系统接受请求，5 秒内仍为 `access=true / bound=false / process=true`，私有检查点为 `listener-recovery-01 / after-reset-binding`。因此普通和成对请求都不能在这台设备上充当强制恢复手段。该行为来自 instrumentation/覆盖安装造成的人工强停路径，不得直接外推为普通系统回收结论。
+随后运行 instrumentation 合同时，Runner 强停产品进程，检查点变为 `access=true / bound=false / process=false`。启动应用并调用 Android `NotificationListenerService.requestRebind()` 后，进程恢复，但红魔在最初 10 秒观察窗口内仍保持 `bound=false`。2026-08-23 又验证了一次 `requestUnbind()` → 250 ms → `requestRebind()`；系统接受请求，5 秒内仍为 `access=true / bound=false / process=true`，且 `dumpsys notification` 明确把该组件列入 `Snoozed notification listeners`。这说明 250 ms 配对调用在此 ROM 上存在时序竞争，不得作为产品恢复算法。
 
-覆盖安装 debug APK 会强停目标包并断开已工作的监听器。后续受控回调实验必须先完成全部需要安装的新代码，再由用户最后一次关闭并开启通知使用权；连接恢复后不得再运行 `adb install`、instrumentation 或其他会强停产品包的动作，只运行独立测试 APK 的直驱入口与只读证据工具。
+待解绑状态稳定后再单独调用一次 `requestRebind()`，组件从休眠名单恢复，检查点 `listener-recovery-02 / after-delayed-rebind` 为 `access=true / bound=true / process=true`。之后覆盖安装带 Android 16 动作修复的新 debug APK，等待 3 秒再单次请求重绑，也在 5 秒内恢复为三项全真。由此可确认：单次、有界、在应用自然启动或明确恢复入口触发的延迟重绑是当前候选；不能声称它覆盖普通系统回收、重启或长待机。
 
-受控源已增加不强停产品进程的 `-Direct` 合同并验证四步自身行为通过。重新授权后的下一步是：先采集 `before-direct-contract`，运行直驱合同，再核对监听事件恰为同身份发布、更新和移除。P0-105 的锁屏、普通系统回收、重启及厂商策略矩阵尚未运行，不能给出 `GO`。
+覆盖安装 debug APK 会强停目标包并断开已工作的监听器。真机可靠性测量仍不得在测量窗口内运行 `adb install`、instrumentation 或其他会强停产品包的动作；调试恢复只能作为人工边界单独记录。
+
+受控源的 `-Direct` 链路已由监听器取得同身份发布、更新和移除三回调，并在原通知移除后完成运行时动作真实落页；前后连接检查点均为真。P0-105 的锁屏、普通系统回收、重启及厂商策略矩阵尚未运行，不能给出 `GO`。

@@ -329,7 +329,10 @@ internal object RuntimeActionRegistry {
     }
 
     @Synchronized
-    fun sendLatestForCreator(creatorPackage: String): RuntimeActionDispatchResult {
+    fun sendLatestForCreator(
+        creatorPackage: String,
+        options: Bundle? = null,
+    ): RuntimeActionDispatchResult {
         val entry = handles.entries.lastOrNull { (_, pendingIntent) ->
             pendingIntent.creatorPackage == creatorPackage
         } ?: return RuntimeActionDispatchResult(
@@ -338,7 +341,7 @@ internal object RuntimeActionRegistry {
         )
 
         return try {
-            entry.value.send()
+            entry.value.send(options)
             RuntimeActionDispatchResult(
                 status = RuntimeActionDispatchStatus.ACCEPTED,
                 registrySizeAfter = handles.size,

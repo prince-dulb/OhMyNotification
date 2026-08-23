@@ -1,6 +1,6 @@
 # P0-101 / SP-01 真实通知字段与生命周期采集
 
-状态：`[候选] DEVICE_PIPELINE_PARTIAL / CONTROLLED_CALLBACK_NOT_YET_CAPTURED`
+状态：`[候选] CONTROLLED_LIFECYCLE_PASSED / BILIBILI_NOT_OBSERVED`
 
 ## 1. 目的与边界
 
@@ -66,6 +66,16 @@ OMN 自身通知在读取正文、extras 和动作前排除。原始 JSONL、通
 
 97 条通知回调均形成 `CAPTURED_PRIVATE_PHASE0`；34 条补扫样本全部带 `contentIntent` 能力摘要，其中 3 条存在 action 数组。此公开结果只记录计数与能力存在性，不包含来源包、标题、正文、系统 key、动作创建方或其他私有值。
 
-首次受控回调尝试发现：instrumentation Runner 会在运行合同前强停产品进程，因此受控源自身合同虽然通过，监听器当时已经不存在，不能把该结果写成“监听器收到受控通知”。工具现已增加 `-Direct` 模式，直接驱动测试 APK 的命令 Activity；发布、更新、真实内部落页和移除四步均通过且不会主动停止 OMN。等待监听器再次绑定后仍须重跑并取得受控来源的三条回调序列。
+首次受控回调尝试发现：instrumentation Runner 会在运行合同前强停产品进程，因此受控源自身合同虽然通过，监听器当时已经不存在，不能把该结果写成“监听器收到受控通知”。工具随后增加 `-Direct` 模式，直接驱动测试 APK 的命令 Activity且不会主动停止 OMN。
 
-此外，私有拉取脚本已改为兼容 Windows PowerShell 5.1 的 `ProcessStartInfo.Arguments` 路径，实机拉取通过。B 站三类真实样本、身份复用反例和受控回调仍未完成，因此本 Spike 保持部分通过而不是 `GO`。
+2026-08-23 的 `action-lifecycle-01` 真机执行已取得受控来源的完整序列：
+
+| 顺序 | 回调 | 系统身份 | 内容动作 |
+|---:|---|---|---|
+| 1 | `POST_OR_UPDATE`（发布） | 同一 key/ID | 存在 |
+| 2 | `POST_OR_UPDATE`（更新） | 同一 key/ID | 存在 |
+| 3 | `REMOVED` | 同一 key/ID | 按隐私协议只保留身份 |
+
+三条回调顺序准确、系统 key 和通知 ID 稳定，监听器在前后检查点均为 `access=true / bound=true / process=true`。这证明受控发布、更新、移除可以由监听器完整接收，也证明“更新必须归并而不是新增逻辑条目”的输入假设成立；它不替代 B 站字段与复用反例。
+
+此外，私有拉取脚本已改为兼容 Windows PowerShell 5.1 的 `ProcessStartInfo.Arguments` 路径，实机拉取通过。B 站投稿、动态、开播三类真实样本与身份复用反例仍未观察，因此本 Spike 保持部分通过而不是 `GO`。

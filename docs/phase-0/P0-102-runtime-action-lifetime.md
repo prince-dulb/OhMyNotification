@@ -1,6 +1,6 @@
 # P0-102 / SP-02 原始动作寿命与持有成本
 
-状态：`[候选] HARNESS_IMPLEMENTED / CONTROLLED_CALLBACK_REQUIRED`
+状态：`[候选] REMOVED_NOTIFICATION_ACTION_PASSED / LONGEVITY_MATRIX_IN_PROGRESS`
 
 建立时间：2026-08-23（Asia/Shanghai）
 
@@ -34,4 +34,16 @@ debug 监听器只在当前进程内有界持有动作引用，不序列化到�
 | 受控来源进入 stopped / 更新 | 区分系统接受派发与目标实际落页 |
 | 句柄数量梯度 | 测量 PSS、Binder 证据和成功率，不先锁定容量 |
 
-当前监听服务尚待用户重新切换通知使用权以恢复绑定，因此受控句柄还没有进入 registry。本文件只证明测试链路已实现并通过构建，不能把任何动作寿命场景标记为通过。
+## 4. Android 16 发送方边界
+
+首轮真机执行中，裸 `PendingIntent.send()` 返回 `ACCEPTED`，但受控目标没有产生新落地回执。[Android 后台 Activity 启动官方指南](https://developer.android.com/guide/components/activities/background-starts#senders-must)对目标 SDK 34+ 的发送方要求显式选择后台 Activity 启动模式；官方建议用户正在查看发送方应用时使用 `ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE`。
+
+调试入口改为可见 Activity，并在 `onPostResume()` 后使用该模式发送。同一 `action-lifecycle-01` 中，受控通知发布、同身份更新、从系统通知栏移除后，OMN 保存的运行时句柄得到：
+
+```text
+dispatch=ACCEPTED targetOpened=True
+```
+
+目标回执的设备单调时间确实前进，不是沿用旧文件。监听连接全过程保持成立。因此，受控来源已证明“原通知移除后、OMN 当前进程仍存活”的运行时句柄可以真实落页；裸 `send()` 被列为 Android 16 上的错误实现。该结论不外推到 B 站，也不证明跨等待、来源 stopped、应用更新或句柄数量梯度。
+
+发送动作必须来自用户当前可见界面的明确点击；不得使用 `ALLOW_ALWAYS` 把后台自动拉起外部 Activity 伪装成通知跳转。
