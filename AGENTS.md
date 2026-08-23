@@ -36,7 +36,8 @@
 - `app/`：唯一 Android 应用模块。`src/main/` 只放可进入 release 的壳与实现，`src/debug/` 放不会进入 release 的 Phase 0 调试入口，`src/test/` 放 JVM 测试，`src/androidTest/` 生成独立测试 APK并承载可控通知源；不得另建平行的产品应用绕过正式构建。测试 APK 使用 `.test` 应用 ID 后缀，只能声明测试所需权限，不得拥有网络、账号或真实用户数据；其组件和标记必须通过 APK 扫描证明不在 production APK 中。
 - `app/src/main/java/.../core/`：不依赖 Android framework、Room 或 Compose 的领域类型与纯规则；`model/` 放不可变契约，`normalize/` 放归一化实现。Android `Notification`、`PendingIntent` 和 `StatusBarNotification` 不得进入此目录。
 - `app/src/main/java/.../capture/`：Android 通知监听、framework 快照复制、当前进程动作仓储和摄取协调；只通过纯数据投影进入领域/持久化边界，禁止在回调中直接操作 Compose。
-- `app/src/main/java/.../data/`：经 G3 明确批准后才可放 Room entity、DAO、数据库和 repository 实现；首次 schema 获批前目录不得创建。
+- `app/src/main/java/.../data/`：放经 G3 明确批准的 Room entity、DAO、数据库和 repository 实现；用户已于 2026-08-23 批准首次 schema v1，后续任何表、列、索引、版本或迁移变化仍需重新获得数据库红线授权。
+- `app/schemas/`：Room 构建导出的版本化 schema JSON，必须跟踪并用于迁移测试；只能由构建生成，不手工改写。
 - `app/src/main/java/.../ui/`：Material 3 界面、展示模型与交互协调；不得持有 `StatusBarNotification`、`Notification` 或长期 `PendingIntent` 引用。
 - `gradle/`：Gradle Wrapper 与版本目录。Wrapper 脚本、JAR、校验后的固定分发 URL和 `libs.versions.toml` 可以跟踪；下载的分发包与用户级缓存不得复制入库。
 - `tools/`：项目内可复现的检查、去敏、夹具和测量脚本；脚本必须有单一入口、非零失败码和简短用法，不得要求全局安装才能运行。

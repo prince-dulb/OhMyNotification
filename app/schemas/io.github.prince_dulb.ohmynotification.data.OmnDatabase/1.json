@@ -1,0 +1,295 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "bb258b0c144926fa9e36aa0608bf8b96",
+    "entities": [
+      {
+        "tableName": "notification_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourcePackage` TEXT NOT NULL, `sourceUserRef` TEXT NOT NULL, `systemKey` TEXT NOT NULL, `notificationId` INTEGER NOT NULL, `tag` TEXT, `lifecycleGeneration` INTEGER NOT NULL, `firstReceivedAtEpochMillis` INTEGER NOT NULL, `lastUpdatedAtEpochMillis` INTEGER NOT NULL, `sortTimeEpochMillis` INTEGER NOT NULL, `originalPostTimeEpochMillis` INTEGER, `title` TEXT, `body` TEXT, `sourceLabelSnapshot` TEXT, `contentFingerprint` TEXT, `normalizationWarnings` TEXT NOT NULL, `normalizationStrategyVersion` INTEGER NOT NULL, `titleOriginalCodePoints` INTEGER NOT NULL, `bodyOriginalCodePoints` INTEGER NOT NULL, `hadContentIntent` INTEGER NOT NULL, `contentIntentCreatorPackage` TEXT, `notificationActionCount` INTEGER NOT NULL, `isRemoved` INTEGER NOT NULL, `removedAtEpochMillis` INTEGER, `lastRemovalReason` INTEGER, `lastCallbackKind` TEXT NOT NULL, `runtimeSessionIdAtLastCapture` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourcePackage",
+            "columnName": "sourcePackage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUserRef",
+            "columnName": "sourceUserRef",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "systemKey",
+            "columnName": "systemKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notificationId",
+            "columnName": "notificationId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tag",
+            "columnName": "tag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lifecycleGeneration",
+            "columnName": "lifecycleGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstReceivedAtEpochMillis",
+            "columnName": "firstReceivedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUpdatedAtEpochMillis",
+            "columnName": "lastUpdatedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortTimeEpochMillis",
+            "columnName": "sortTimeEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalPostTimeEpochMillis",
+            "columnName": "originalPostTimeEpochMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "body",
+            "columnName": "body",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceLabelSnapshot",
+            "columnName": "sourceLabelSnapshot",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "contentFingerprint",
+            "columnName": "contentFingerprint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "normalizationWarnings",
+            "columnName": "normalizationWarnings",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizationStrategyVersion",
+            "columnName": "normalizationStrategyVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "titleOriginalCodePoints",
+            "columnName": "titleOriginalCodePoints",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bodyOriginalCodePoints",
+            "columnName": "bodyOriginalCodePoints",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hadContentIntent",
+            "columnName": "hadContentIntent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentIntentCreatorPackage",
+            "columnName": "contentIntentCreatorPackage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notificationActionCount",
+            "columnName": "notificationActionCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isRemoved",
+            "columnName": "isRemoved",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "removedAtEpochMillis",
+            "columnName": "removedAtEpochMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRemovalReason",
+            "columnName": "lastRemovalReason",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastCallbackKind",
+            "columnName": "lastCallbackKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runtimeSessionIdAtLastCapture",
+            "columnName": "runtimeSessionIdAtLastCapture",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "itemId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_notification_items_sortTimeEpochMillis_itemId",
+            "unique": false,
+            "columnNames": [
+              "sortTimeEpochMillis",
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_notification_items_sortTimeEpochMillis_itemId` ON `${TABLE_NAME}` (`sortTimeEpochMillis`, `itemId`)"
+          },
+          {
+            "name": "index_notification_items_sourcePackage_sortTimeEpochMillis_itemId",
+            "unique": false,
+            "columnNames": [
+              "sourcePackage",
+              "sortTimeEpochMillis",
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_notification_items_sourcePackage_sortTimeEpochMillis_itemId` ON `${TABLE_NAME}` (`sourcePackage`, `sortTimeEpochMillis`, `itemId`)"
+          },
+          {
+            "name": "index_notification_items_sourcePackage_sourceUserRef_systemKey_lifecycleGeneration",
+            "unique": true,
+            "columnNames": [
+              "sourcePackage",
+              "sourceUserRef",
+              "systemKey",
+              "lifecycleGeneration"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_notification_items_sourcePackage_sourceUserRef_systemKey_lifecycleGeneration` ON `${TABLE_NAME}` (`sourcePackage`, `sourceUserRef`, `systemKey`, `lifecycleGeneration`)"
+          }
+        ]
+      },
+      {
+        "tableName": "health_evidence",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`evidenceId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `occurredAtEpochMillis` INTEGER NOT NULL, `runtimeSessionId` TEXT NOT NULL, `listenerConnectionId` TEXT, `itemId` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "evidenceId",
+            "columnName": "evidenceId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAtEpochMillis",
+            "columnName": "occurredAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runtimeSessionId",
+            "columnName": "runtimeSessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "listenerConnectionId",
+            "columnName": "listenerConnectionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "evidenceId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_health_evidence_occurredAtEpochMillis_evidenceId",
+            "unique": false,
+            "columnNames": [
+              "occurredAtEpochMillis",
+              "evidenceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_health_evidence_occurredAtEpochMillis_evidenceId` ON `${TABLE_NAME}` (`occurredAtEpochMillis`, `evidenceId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "excluded_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sourcePackage` TEXT NOT NULL, `excludedAtEpochMillis` INTEGER NOT NULL, PRIMARY KEY(`sourcePackage`))",
+        "fields": [
+          {
+            "fieldPath": "sourcePackage",
+            "columnName": "sourcePackage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "excludedAtEpochMillis",
+            "columnName": "excludedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sourcePackage"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'bb258b0c144926fa9e36aa0608bf8b96')"
+    ]
+  }
+}
