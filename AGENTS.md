@@ -136,6 +136,8 @@
 - Android 设备测试（有目标设备时）：`.\gradlew.bat connectedDebugAndroidTest`
 - Android 安装启动冒烟（有授权设备时）：`.\tools\install-and-smoke-test.ps1`
 - Phase 0 私有证据模板（按 Spike）：`.\tools\new-phase0-evidence.ps1 -SpikeId SP-01`
+- 打开通知使用权设置（debug 监听器安装后）：`.\tools\open-notification-listener-settings.ps1`
+- Phase 0 通知事件拉取（debug 监听授权并收到回调后）：`.\tools\pull-phase0-notification-events.ps1`
 - 公开候选树敏感扫描：`.\tools\verify-sensitive-content.ps1 -SelfTest`
 - Android 静态检查：`.\gradlew.bat lint`
 - 调试构建：`.\gradlew.bat :app:assembleDebug`

@@ -8,6 +8,7 @@ Proves that controlled test-source code and fixtures exist only in the instrumen
 #>
 param(
     [string]$ProductionApk,
+    [string]$DebugApk,
     [string]$TestApk
 )
 
@@ -20,11 +21,14 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ProductionApk)) {
     $ProductionApk = Join-Path $projectRoot 'app\build\outputs\apk\release\app-release-unsigned.apk'
 }
+if ([string]::IsNullOrWhiteSpace($DebugApk)) {
+    $DebugApk = Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk'
+}
 if ([string]::IsNullOrWhiteSpace($TestApk)) {
     $TestApk = Join-Path $projectRoot 'app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk'
 }
 
-foreach ($apk in @($ProductionApk, $TestApk)) {
+foreach ($apk in @($ProductionApk, $DebugApk, $TestApk)) {
     if (-not (Test-Path -LiteralPath $apk -PathType Leaf)) {
         throw "Required APK is missing. Run the documented build gate before this check."
     }
@@ -63,6 +67,7 @@ function Read-ApkIndex {
 }
 
 $productionIndex = Read-ApkIndex -Path $ProductionApk
+$debugIndex = Read-ApkIndex -Path $DebugApk
 $testIndex = Read-ApkIndex -Path $TestApk
 $testOnlyMarkers = @(
     'OMN_TEST_ONLY_NOTIFICATION',
@@ -76,6 +81,19 @@ foreach ($marker in $testOnlyMarkers) {
     }
     if (-not $testIndex.Payload.Contains($marker)) {
         throw "Instrumentation APK is missing expected test-only marker '$marker'."
+    }
+}
+
+$debugOnlyMarkers = @(
+    'PhaseZeroNotificationListener',
+    'notification-events-v1.jsonl'
+)
+foreach ($marker in $debugOnlyMarkers) {
+    if ($productionIndex.Payload.Contains($marker)) {
+        throw "Production APK contains debug-only marker '$marker'."
+    }
+    if (-not $debugIndex.Payload.Contains($marker)) {
+        throw "Debug APK is missing expected Phase 0 marker '$marker'."
     }
 }
 
@@ -164,4 +182,4 @@ foreach ($permission in $allowedTestPermissions) {
     }
 }
 
-Write-Output "PASS production=$([System.IO.Path]::GetFileName($ProductionApk)) test=$([System.IO.Path]::GetFileName($TestApk)) markers=$($testOnlyMarkers.Count) permissions=$($testPermissions.Count)"
+Write-Output "PASS production=$([System.IO.Path]::GetFileName($ProductionApk)) debug=$([System.IO.Path]::GetFileName($DebugApk)) test=$([System.IO.Path]::GetFileName($TestApk)) testMarkers=$($testOnlyMarkers.Count) debugMarkers=$($debugOnlyMarkers.Count) permissions=$($testPermissions.Count)"
