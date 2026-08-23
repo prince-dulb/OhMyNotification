@@ -1,0 +1,39 @@
+{
+  "datasetId": "ingestion-events-v1",
+  "schemaVersion": 1,
+  "seed": 2026082304,
+  "sentinel": "OMN_SYNTHETIC_INGESTION_EVENTS",
+  "queueCandidates": [16, 128],
+  "burst": {
+    "identityCount": 25,
+    "callbacksPerIdentity": [
+      "POST_OR_UPDATE:v0",
+      "POST_OR_UPDATE:v0:exact-replay",
+      "POST_OR_UPDATE:v1",
+      "REMOVED"
+    ],
+    "totalCallbacks": 100,
+    "expectedItems": 25,
+    "expectedEvents": 100,
+    "expectedHealthFacts": 100,
+    "expectedContentRevisionPerItem": 1
+  },
+  "caseIds": [
+    "exact-replay",
+    "recovery-match",
+    "content-update-keeps-first-position",
+    "persistent-target-only-update",
+    "same-text-different-system-key",
+    "same-system-id-different-user",
+    "remove-and-repost-next-generation",
+    "orphan-removal",
+    "identity-evidence-conflict",
+    "wall-clock-jump-keeps-ingest-order",
+    "fault-after-sequence-allocation",
+    "fault-after-item-write",
+    "fault-after-event-write",
+    "fault-after-health-write",
+    "explicit-backpressure-accounting"
+  ],
+  "syntheticSourcePrefix": "dev.omn.synthetic.source"
+}
