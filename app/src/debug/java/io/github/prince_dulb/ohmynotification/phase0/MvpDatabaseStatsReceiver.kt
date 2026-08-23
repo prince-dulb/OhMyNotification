@@ -2,6 +2,7 @@ package io.github.prince_dulb.ohmynotification.phase0
 
 import android.Manifest
 import android.app.Activity
+import android.app.Notification
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -63,6 +64,13 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         val database = OmnDatabase.get(context).openHelper.readableDatabase
         val graph = (context.applicationContext as OmnApplication).graph
         val runtimeArgs = arrayOf(graph.runtimeSessionId)
+        val activeStatus = context.getSystemService(NotificationManager::class.java)
+            .activeNotifications
+            .firstOrNull { item -> item.notification.channelId == graph.statusNotificationController.channelId() }
+            ?.notification
+        val publicStatus = activeStatus?.publicVersion
+        val latestPrivateText = database.latestPrivateText()
+        val publicTextFields = publicStatus?.let(::visibleTextFields).orEmpty()
         return JSONObject()
             .put("status", "OK")
             .put("listenerConnected", ListenerRuntimeState.isConnected())
@@ -82,6 +90,25 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
             .put(
                 "statusNotificationPublishedUpdateCount",
                 graph.statusNotificationController.publishedUpdateCount(),
+            )
+            .put(
+                "statusNotificationOngoing",
+                activeStatus?.flags?.and(Notification.FLAG_ONGOING_EVENT) != 0,
+            )
+            .put(
+                "statusNotificationOnlyAlertOnce",
+                activeStatus?.flags?.and(Notification.FLAG_ONLY_ALERT_ONCE) != 0,
+            )
+            .put("statusNotificationPrivateVisibility", activeStatus?.visibility == Notification.VISIBILITY_PRIVATE)
+            .put("statusNotificationPublicVersionPresent", publicStatus != null)
+            .put("statusNotificationPublicVisibility", publicStatus?.visibility == Notification.VISIBILITY_PUBLIC)
+            .put(
+                "statusPublicContainsLatestTitle",
+                latestPrivateText.title?.let { title -> publicTextFields.any { it.contains(title) } } == true,
+            )
+            .put(
+                "statusPublicContainsLatestBody",
+                latestPrivateText.body?.let { body -> publicTextFields.any { it.contains(body) } } == true,
             )
             .put(
                 "includedSourceFilterCount",
@@ -210,6 +237,29 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         else -> null
     }
 
+    private fun androidx.sqlite.db.SupportSQLiteDatabase.latestPrivateText(): LatestPrivateText =
+        query(
+            """
+            SELECT title, body FROM notification_items
+            ORDER BY sortTimeEpochMillis DESC, itemId DESC
+            LIMIT 1
+            """.trimIndent(),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return LatestPrivateText(null, null)
+            LatestPrivateText(
+                title = cursor.getStringOrNull(0),
+                body = cursor.getStringOrNull(1),
+            )
+        }
+
+    private fun Cursor.getStringOrNull(index: Int): String? = if (isNull(index)) null else getString(index)
+
+    private fun visibleTextFields(notification: Notification): List<String> = listOfNotNull(
+        notification.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+        notification.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+        notification.extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
+    )
+
     private fun androidx.sqlite.db.SupportSQLiteDatabase.scalar(
         query: String,
         bindArgs: Array<out Any?> = emptyArray(),
@@ -257,4 +307,6 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         val itemId: Long,
         val fingerprints: Map<String, Int?>,
     )
+
+    private data class LatestPrivateText(val title: String?, val body: String?)
 }
