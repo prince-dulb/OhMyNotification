@@ -1,35 +1,34 @@
 package io.github.prince_dulb.ohmynotification.phase0
 
+import android.Manifest
 import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import io.github.prince_dulb.ohmynotification.data.OmnDatabase
 import io.github.prince_dulb.ohmynotification.OmnApplication
 import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_DATABASE_STATS) return
-        val pendingResult = goAsync()
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val result = runCatching { readStats(context) }
-            result.onSuccess { stats ->
-                pendingResult.resultCode = Activity.RESULT_OK
-                pendingResult.resultData = stats.toString()
-            }.onFailure { failure ->
-                pendingResult.resultCode = Activity.RESULT_CANCELED
-                pendingResult.resultData = JSONObject()
-                    .put("status", "ERROR")
-                    .put("failureType", failure.javaClass.simpleName)
-                    .toString()
-            }
-            pendingResult.finish()
+        val result = runCatching {
+            runBlocking { withContext(Dispatchers.IO) { readStats(context) } }
+        }
+        result.onSuccess { stats ->
+            resultCode = Activity.RESULT_OK
+            resultData = stats.toString()
+        }.onFailure { failure ->
+            resultCode = Activity.RESULT_CANCELED
+            resultData = JSONObject()
+                .put("status", "ERROR")
+                .put("failureType", failure.javaClass.simpleName)
+                .toString()
         }
     }
 
@@ -40,6 +39,23 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         return JSONObject()
             .put("status", "OK")
             .put("listenerConnected", ListenerRuntimeState.isConnected())
+            .put(
+                "statusNotificationPermissionGranted",
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED,
+            )
+            .put(
+                "statusNotificationChannelEnabled",
+                graph.statusNotificationController.isChannelEnabled(),
+            )
+            .put(
+                "statusNotificationActive",
+                graph.statusNotificationController.isStatusNotificationActive(),
+            )
+            .put(
+                "statusNotificationPublishedUpdateCount",
+                graph.statusNotificationController.publishedUpdateCount(),
+            )
             .put("runtimeActionHandleCount", graph.runtimeActionStore.size())
             .put("notificationItemCount", database.scalar("SELECT COUNT(*) FROM notification_items"))
             .put(

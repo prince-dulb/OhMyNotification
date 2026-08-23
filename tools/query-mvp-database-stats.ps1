@@ -26,9 +26,16 @@ if ([string]::IsNullOrWhiteSpace($Serial)) {
 
 $component = 'io.github.prince_dulb.ohmynotification/.phase0.MvpDatabaseStatsReceiver'
 $action = 'io.github.prince_dulb.ohmynotification.debug.DATABASE_STATS'
-$output = & $adbPath -s $Serial shell am broadcast -a $action -n $component 2>&1
+$powerOutput = (& $adbPath -s $Serial shell dumpsys power 2>&1) -join "`n"
+$screenInteractive = $powerOutput -match 'mWakefulness=Awake|mInteractive=true'
+$output = & $adbPath -s $Serial shell am broadcast --user current -a $action -n $component 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'Database stats broadcast failed.' }
 $resultLine = $output | Where-Object { $_ -match 'Broadcast completed: result=(-?\d+), data="(.*)"' } | Select-Object -Last 1
-if ($null -eq $resultLine) { throw 'Database stats result was not returned.' }
+if ($null -eq $resultLine) {
+    if (-not $screenInteractive) {
+        throw 'Database stats result was not returned because the vendor skipped the debug broadcast while screen-off. Wake the screen and retry.'
+    }
+    throw 'Database stats result was not returned.'
+}
 if ([int]$Matches[1] -ne -1) { throw "Database stats receiver returned: $($Matches[2])" }
 Write-Output $Matches[2]

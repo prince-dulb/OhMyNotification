@@ -27,6 +27,7 @@ class StatusNotificationController(private val context: Context) {
     private var latestTitle: String? = null
     private var latestEventTimeEpochMillis: Long? = null
     private var lastPublishedSignature: StatusSignature? = null
+    private var publishedUpdateCount = 0L
     private val publishRunnable = Runnable(::publishNow)
 
     init {
@@ -78,6 +79,13 @@ class StatusNotificationController(private val context: Context) {
         notificationManager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
 
     fun channelId(): String = CHANNEL_ID
+
+    fun isStatusNotificationActive(): Boolean = notificationManager.activeNotifications.any { item ->
+        item.id == NOTIFICATION_ID && item.notification.channelId == CHANNEL_ID
+    }
+
+    @Synchronized
+    fun publishedUpdateCount(): Long = publishedUpdateCount
 
     @Synchronized
     fun onCommitted(commit: NotificationCommit) {
@@ -163,7 +171,10 @@ class StatusNotificationController(private val context: Context) {
             .setPublicVersion(publicVersion)
             .build()
         runCatching { notificationManager.notify(NOTIFICATION_ID, notification) }
-            .onSuccess { lastPublishedSignature = signature }
+            .onSuccess {
+                lastPublishedSignature = signature
+                publishedUpdateCount += 1L
+            }
     }
 
     private fun baseBuilder(): Notification.Builder = Notification.Builder(context, CHANNEL_ID)
