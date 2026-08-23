@@ -1,7 +1,7 @@
 [CmdletBinding()]
 <#
 .SYNOPSIS
-Installs the local Phase 0 Debug APK, launches its main activity, and records private smoke-test evidence.
+Installs the local MVP Debug APK, launches its main activity, and records private smoke-test evidence.
 
 .EXAMPLE
 .\tools\install-and-smoke-test.ps1
@@ -24,7 +24,7 @@ trap {
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ApkPath)) {
-    $ApkPath = Join-Path $projectRoot 'artifacts\OhMyNotification-0.0.0-phase0-debug.apk'
+    $ApkPath = Join-Path $projectRoot 'artifacts\OhMyNotification-0.1.0-mvp-debug.apk'
 }
 if (-not (Test-Path -LiteralPath $ApkPath -PathType Leaf)) {
     throw 'Local delivery APK is missing. Build and copy the documented Debug artifact first.'
