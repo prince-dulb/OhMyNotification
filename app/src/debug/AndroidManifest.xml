@@ -9,6 +9,13 @@
             android:noHistory="true"
             android:theme="@android:style/Theme.NoDisplay" />
 
+        <activity
+            android:name=".phase0.PhaseZeroControlledActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <service
             android:name=".phase0.PhaseZeroNotificationListener"
             android:exported="false"

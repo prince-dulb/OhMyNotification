@@ -303,7 +303,18 @@ class PhaseZeroNotificationListener : NotificationListenerService() {
     }
 }
 
-private object RuntimeActionRegistry {
+internal enum class RuntimeActionDispatchStatus {
+    ACCEPTED,
+    CANCELED,
+    NOT_FOUND,
+}
+
+internal data class RuntimeActionDispatchResult(
+    val status: RuntimeActionDispatchStatus,
+    val registrySizeAfter: Int,
+)
+
+internal object RuntimeActionRegistry {
     private const val MAX_HANDLES = 512
     private val handles = object : LinkedHashMap<String, PendingIntent>(MAX_HANDLES + 1, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PendingIntent>?): Boolean =
@@ -314,6 +325,30 @@ private object RuntimeActionRegistry {
     fun put(eventId: String, pendingIntent: PendingIntent?) {
         if (pendingIntent != null) {
             handles[eventId] = pendingIntent
+        }
+    }
+
+    @Synchronized
+    fun sendLatestForCreator(creatorPackage: String): RuntimeActionDispatchResult {
+        val entry = handles.entries.lastOrNull { (_, pendingIntent) ->
+            pendingIntent.creatorPackage == creatorPackage
+        } ?: return RuntimeActionDispatchResult(
+            status = RuntimeActionDispatchStatus.NOT_FOUND,
+            registrySizeAfter = handles.size,
+        )
+
+        return try {
+            entry.value.send()
+            RuntimeActionDispatchResult(
+                status = RuntimeActionDispatchStatus.ACCEPTED,
+                registrySizeAfter = handles.size,
+            )
+        } catch (_: PendingIntent.CanceledException) {
+            handles.remove(entry.key)
+            RuntimeActionDispatchResult(
+                status = RuntimeActionDispatchStatus.CANCELED,
+                registrySizeAfter = handles.size,
+            )
         }
     }
 

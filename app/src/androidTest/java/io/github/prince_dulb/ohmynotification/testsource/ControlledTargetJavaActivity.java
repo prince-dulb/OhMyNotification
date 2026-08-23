@@ -2,6 +2,7 @@ package io.github.prince_dulb.ohmynotification.testsource;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.widget.TextView;
 
@@ -25,6 +26,10 @@ public final class ControlledTargetJavaActivity extends Activity {
         setContentView(content);
         Properties result = new Properties();
         result.setProperty("status", "OPENED");
+        result.setProperty("case_id", caseId == null ? "missing-case" : caseId);
+        result.setProperty("target_token", targetToken == null ? "missing-token" : targetToken);
+        result.setProperty("opened_at_epoch_millis", Long.toString(System.currentTimeMillis()));
+        result.setProperty("opened_elapsed_nanos", Long.toString(SystemClock.elapsedRealtimeNanos()));
         try (OutputStream output = openFileOutput("controlled-target-result.properties", MODE_PRIVATE)) {
             result.store(output, null);
         } catch (Exception failure) {

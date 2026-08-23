@@ -85,6 +85,7 @@ foreach ($marker in $testOnlyMarkers) {
 }
 
 $debugOnlyMarkers = @(
+    'PhaseZeroControlledActionActivity',
     'PhaseZeroNotificationListener',
     'PhaseZeroListenerRebindActivity',
     'notification-events-v1.jsonl'

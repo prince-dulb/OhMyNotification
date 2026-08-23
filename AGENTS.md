@@ -139,6 +139,7 @@
 - 打开通知使用权设置（debug 监听器安装后）：`.\tools\open-notification-listener-settings.ps1`
 - 请求重绑已获授权的 debug 监听器：`.\tools\request-phase0-listener-rebind.ps1`；此命令不授予权限
 - Phase 0 通知事件拉取（debug 监听授权并收到回调后）：`.\tools\pull-phase0-notification-events.ps1`
+- Phase 0 受控运行时动作派发：`.\tools\invoke-phase0-controlled-runtime-action.ps1`；只允许测试 APK 创建的动作
 - Phase 0 监听状态只读检查点：`.\tools\capture-phase0-listener-state.ps1 -SelfTest`；真机实验时另传 `-Checkpoint` 与 `-RunId`
 - 公开候选树敏感扫描：`.\tools\verify-sensitive-content.ps1 -SelfTest`
 - Android 静态检查：`.\gradlew.bat lint`
