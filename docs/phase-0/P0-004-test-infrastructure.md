@@ -84,10 +84,13 @@
 
 ```powershell
 .\tools\invoke-controlled-notification.ps1 -Operation contract -Install
+.\tools\invoke-controlled-notification.ps1 -Operation contract -Direct
 .\gradlew.bat connectedDebugAndroidTest
 ```
 
 结果：完整合同 `OK (1 test)`，发布、同身份更新、真实动作落地和移除全部通过；完整设备测试 `BUILD SUCCESSFUL`，无失败，未携带命令参数的命令测试按设计跳过。
+
+`-Direct` 使用测试 APK 已有的导出命令 Activity 从 ADB 依次执行同一合同，不启动 instrumentation，因此不会在测试开始前强停产品进程。监听器回调验证必须使用此模式；instrumentation 模式只验证受控源自身合同，不能作为监听器收到回调的证据。
 
 ## 8. 决策与未验证项
 

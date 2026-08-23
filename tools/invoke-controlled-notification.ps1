@@ -25,6 +25,8 @@ param(
 
     [switch]$Install,
 
+    [switch]$Direct,
+
     [string]$Serial
 )
 
@@ -107,6 +109,117 @@ function Invoke-Adb {
     return @($commandOutput | ForEach-Object { $_.ToString() })
 }
 
+function Read-DirectResult {
+    param([Parameter(Mandatory)][string]$ExpectedToken)
+
+    $deadline = [DateTimeOffset]::Now.AddSeconds(4)
+    do {
+        $rawResult = & $adbPath @adbPrefix exec-out run-as $testPackage cat files/controlled-notification-result.properties 2>&1
+        $readExitCode = $LASTEXITCODE
+        if ($readExitCode -eq 0) {
+            $properties = @{}
+            foreach ($lineValue in @($rawResult | ForEach-Object { $_.ToString() })) {
+                $line = $lineValue.Trim()
+                if ($line.Length -eq 0 -or $line.StartsWith('#')) {
+                    continue
+                }
+                $parts = $line.Split('=', 2)
+                if ($parts.Count -eq 2) {
+                    $properties[$parts[0].Trim()] = $parts[1].Trim()
+                }
+            }
+            if (
+                $properties.ContainsKey('command_token') -and
+                $properties['command_token'] -eq $ExpectedToken -and
+                $properties.ContainsKey('status') -and
+                $properties['status'] -ne 'STARTED'
+            ) {
+                return $properties
+            }
+        }
+        Start-Sleep -Milliseconds 50
+    } while ([DateTimeOffset]::Now -lt $deadline)
+
+    throw 'Timed out waiting for the direct controlled-notification result.'
+}
+
+function Assert-DirectResult {
+    param(
+        [Parameter(Mandatory)][string]$RequestedOperation,
+        [Parameter(Mandatory)][hashtable]$Result
+    )
+
+    if ($Result['status'] -ne 'OK') {
+        throw "Direct controlled-notification operation failed: $($Result['status'])"
+    }
+    switch ($RequestedOperation) {
+        'publish' {
+            if (
+                $Result['active'] -ne 'true' -or
+                $Result['title_contains_marker'] -ne 'true' -or
+                $Result['title_ends_with_update'] -ne 'false' -or
+                $Result['has_content_intent'] -ne 'true'
+            ) {
+                throw 'Direct publish result did not match its contract.'
+            }
+        }
+        'update' {
+            if (
+                $Result['active'] -ne 'true' -or
+                $Result['title_contains_marker'] -ne 'true' -or
+                $Result['title_ends_with_update'] -ne 'true' -or
+                $Result['has_content_intent'] -ne 'true'
+            ) {
+                throw 'Direct update result did not match its contract.'
+            }
+        }
+        'open' {
+            if ($Result['active'] -ne 'true' -or $Result['target_opened'] -ne 'true') {
+                throw 'Direct open result did not reach the controlled target.'
+            }
+        }
+        'remove' {
+            if ($Result['active'] -ne 'false') {
+                throw 'Direct remove result left the controlled notification active.'
+            }
+        }
+    }
+}
+
+function Invoke-DirectOperation {
+    param(
+        [Parameter(Mandatory)][string]$RequestedOperation,
+        [Parameter(Mandatory)][string]$RequestedCaseId
+    )
+
+    $commandToken = [Guid]::NewGuid().ToString('N')
+    $component = "$testPackage/io.github.prince_dulb.ohmynotification.testsource.ControlledNotificationCommandActivity"
+    $startOutput = Invoke-Adb -Arguments @(
+        'shell',
+        'am',
+        'start',
+        '-W',
+        '-n',
+        $component,
+        '--es',
+        'omn_operation',
+        $RequestedOperation,
+        '--es',
+        'omn_case_id',
+        $RequestedCaseId,
+        '--es',
+        'omn_command_token',
+        $commandToken
+    )
+    $startText = $startOutput -join [Environment]::NewLine
+    if ($startText -match '(?m)^Error:|SecurityException|Exception occurred') {
+        throw "Unable to start direct controlled-notification command.$([Environment]::NewLine)$startText"
+    }
+    $result = Read-DirectResult -ExpectedToken $commandToken
+    Assert-DirectResult -RequestedOperation $RequestedOperation -Result $result
+    Write-Output "PASS directOperation=$RequestedOperation case=$RequestedCaseId"
+}
+
 if ($Install) {
     foreach ($apk in @($debugApk, $testApk)) {
         if (-not (Test-Path -LiteralPath $apk -PathType Leaf)) {
@@ -129,6 +242,20 @@ $null = Invoke-Adb -Arguments @(
     $testPackage,
     'android.permission.POST_NOTIFICATIONS'
 )
+
+if ($Direct) {
+    $directOperations = if ($Operation -eq 'contract') {
+        @('publish', 'update', 'open', 'remove')
+    }
+    else {
+        @($Operation)
+    }
+    foreach ($directOperation in $directOperations) {
+        Invoke-DirectOperation -RequestedOperation $directOperation -RequestedCaseId $CaseId
+    }
+    Write-Output "PASS operation=$Operation case=$CaseId direct=true"
+    exit 0
+}
 
 if ($Operation -eq 'contract') {
     $testClass = 'io.github.prince_dulb.ohmynotification.testsource.ControlledNotificationSourceContractTest'
