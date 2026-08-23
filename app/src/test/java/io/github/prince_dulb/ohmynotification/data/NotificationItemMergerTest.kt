@@ -46,6 +46,7 @@ class NotificationItemMergerTest {
         assertEquals(2_000L, result.item.firstReceivedAtEpochMillis)
         assertEquals(2_000L, result.item.sortTimeEpochMillis)
         assertEquals(8_000L, result.item.lastUpdatedAtEpochMillis)
+        assertEquals(1_000L, result.item.originalPostTimeEpochMillis)
         assertEquals("updated", result.item.title)
     }
 

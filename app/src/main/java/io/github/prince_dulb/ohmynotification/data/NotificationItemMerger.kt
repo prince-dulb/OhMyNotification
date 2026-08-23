@@ -54,7 +54,8 @@ internal object NotificationItemMerger {
                     observation.observedAtEpochMillis,
                 ),
                 sortTimeEpochMillis = previous.sortTimeEpochMillis,
-                originalPostTimeEpochMillis = content.originalPostTimeEpochMillis,
+                originalPostTimeEpochMillis =
+                    previous.originalPostTimeEpochMillis ?: content.originalPostTimeEpochMillis,
                 title = content.title,
                 body = content.body,
                 sourceLabelSnapshot = content.sourceLabelSnapshot ?: previous.sourceLabelSnapshot,
