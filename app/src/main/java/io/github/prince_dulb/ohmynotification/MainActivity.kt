@@ -12,6 +12,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.lifecycleScope
+import io.github.prince_dulb.ohmynotification.capture.ListenerRebindResult
+import io.github.prince_dulb.ohmynotification.capture.ListenerRebindTrigger
 import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
 import io.github.prince_dulb.ohmynotification.capture.OmnNotificationListenerComponent
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
@@ -19,10 +22,13 @@ import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.ui.AppUiState
 import io.github.prince_dulb.ohmynotification.ui.OmnAppScreen
 import io.github.prince_dulb.ohmynotification.ui.theme.OhMyNotificationTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val uiState = mutableStateOf(AppUiState())
+    private var automaticRebindJob: Job? = null
     private val connectionListener: (Boolean) -> Unit = {
         runOnUiThread(::refreshUiState)
     }
@@ -59,6 +65,7 @@ class MainActivity : ComponentActivity() {
                     onOpenNotificationAccess = ::openNotificationAccessSettings,
                     onRequestStatusNotification = ::requestStatusNotificationPermission,
                     onOpenStatusChannel = ::openStatusNotificationChannel,
+                    onRequestListenerRebind = ::requestListenerRebind,
                     onSetSourceExcluded = ::setSourceExcluded,
                     onApplyIncludedSources =
                         (application as OmnApplication).graph.inboxViewPreferencesStore::setIncludedSources,
@@ -73,6 +80,13 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         ListenerRuntimeState.addListener(connectionListener)
         refreshUiState()
+        automaticRebindJob?.cancel()
+        automaticRebindJob = lifecycleScope.launch {
+            delay(AUTOMATIC_REBIND_DELAY_MILLIS)
+            if (uiState.value.listenerAccessGranted && !ListenerRuntimeState.isConnected()) {
+                requestListenerRebind(ListenerRebindTrigger.AUTOMATIC)
+            }
+        }
     }
 
     override fun onResume() {
@@ -81,6 +95,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        automaticRebindJob?.cancel()
+        automaticRebindJob = null
         ListenerRuntimeState.removeListener(connectionListener)
         super.onStop()
     }
@@ -138,6 +154,9 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun requestListenerRebind(trigger: ListenerRebindTrigger): ListenerRebindResult =
+        (application as OmnApplication).graph.listenerRebindController.request(trigger)
+
     private fun setSourceExcluded(sourcePackage: String, excluded: Boolean) {
         (application as OmnApplication).graph.serialScope.launch {
             (application as OmnApplication).graph.repository.setSourceExcluded(sourcePackage, excluded)
@@ -155,5 +174,9 @@ class MainActivity : ComponentActivity() {
         } catch (_: ActivityNotFoundException) {
             false
         }
+    }
+
+    private companion object {
+        const val AUTOMATIC_REBIND_DELAY_MILLIS = 3_000L
     }
 }

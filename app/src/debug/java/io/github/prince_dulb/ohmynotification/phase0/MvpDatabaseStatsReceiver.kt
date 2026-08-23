@@ -9,9 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.service.notification.NotificationListenerService
 import io.github.prince_dulb.ohmynotification.data.OmnDatabase
 import io.github.prince_dulb.ohmynotification.OmnApplication
 import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
+import io.github.prince_dulb.ohmynotification.capture.OmnNotificationListenerComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -20,6 +22,14 @@ import org.json.JSONObject
 
 class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_UNBIND_PRODUCTION_LISTENER) {
+            NotificationListenerService.requestUnbind(
+                OmnNotificationListenerComponent.componentName(context),
+            )
+            resultCode = Activity.RESULT_OK
+            resultData = JSONObject().put("status", "OK").toString()
+            return
+        }
         if (intent.action == ACTION_SET_CONTROLLED_SOURCE_EXCLUSION) {
             val graph = (context.applicationContext as OmnApplication).graph
             runBlocking {
@@ -63,6 +73,7 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     private fun readStats(context: Context): JSONObject {
         val database = OmnDatabase.get(context).openHelper.readableDatabase
         val graph = (context.applicationContext as OmnApplication).graph
+        val rebind = graph.listenerRebindController.debugSnapshot()
         val runtimeArgs = arrayOf(graph.runtimeSessionId)
         val activeStatus = context.getSystemService(NotificationManager::class.java)
             .activeNotifications
@@ -74,6 +85,9 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         return JSONObject()
             .put("status", "OK")
             .put("listenerConnected", ListenerRuntimeState.isConnected())
+            .put("listenerRebindRequestCount", rebind.requestCount)
+            .put("listenerRebindLastTrigger", rebind.lastTrigger?.name)
+            .put("listenerRebindLastResult", rebind.lastResult?.name)
             .put(
                 "statusNotificationPermissionGranted",
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
@@ -295,6 +309,8 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         var lastCapturedFieldSnapshot: CapturedFieldSnapshot? = null
         const val ACTION_DATABASE_STATS =
             "io.github.prince_dulb.ohmynotification.debug.DATABASE_STATS"
+        const val ACTION_UNBIND_PRODUCTION_LISTENER =
+            "io.github.prince_dulb.ohmynotification.debug.UNBIND_PRODUCTION_LISTENER"
         const val ACTION_CANCEL_STATUS_NOTIFICATION =
             "io.github.prince_dulb.ohmynotification.debug.CANCEL_STATUS_NOTIFICATION"
         const val ACTION_SET_CONTROLLED_SOURCE_EXCLUSION =

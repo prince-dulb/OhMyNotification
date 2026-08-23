@@ -39,6 +39,7 @@ class NotificationRepository(
     private val policyStore: MonitoringPolicyStore,
 ) {
     private val dao = database.omnDao()
+    private val positiveHealthEvidenceGate = PositiveHealthEvidenceGate()
 
     val sourceSummaries: Flow<List<SourceSummaryRow>> = dao.observeSourceSummaries()
     val excludedSources: Flow<List<ExcludedSourceEntity>> = dao.observeExcludedSources()
@@ -69,7 +70,7 @@ class NotificationRepository(
         sourceLabel: String?,
     ): NotificationCommit? {
         val observation = captured.observation
-        val commit = database.withTransaction {
+        val transactionResult = database.withTransaction {
             when (observation.callbackKind) {
                 ObservedCallbackKind.REMOVED -> commitRemoval(observation)
                 ObservedCallbackKind.POST_OR_UPDATE,
@@ -77,6 +78,8 @@ class NotificationRepository(
                 -> commitContent(observation, sourceLabel)
             }
         }
+        transactionResult.positiveEvidence?.let(positiveHealthEvidenceGate::markRecorded)
+        val commit = transactionResult.commit
 
         if (observation.callbackKind != ObservedCallbackKind.REMOVED && commit != null) {
             runtimeActionStore.put(commit.item.itemId, captured.runtimeAction)
@@ -99,7 +102,19 @@ class NotificationRepository(
                 itemId = null,
             ),
         )
-        trimHealthEvidenceIfNeeded(evidenceId)
+        try {
+            trimHealthEvidenceIfNeeded(evidenceId)
+        } finally {
+            if (kind in POSITIVE_HEALTH_KINDS && listenerConnectionId != null) {
+                positiveHealthEvidenceGate.markRecorded(
+                    PositiveHealthEvidence(
+                        runtimeSessionId = runtimeSessionId,
+                        listenerConnectionId = listenerConnectionId,
+                        occurredAtEpochMillis = occurredAtEpochMillis,
+                    ),
+                )
+            }
+        }
     }
 
     suspend fun reconcilePolicyFromDatabase() {
@@ -129,9 +144,9 @@ class NotificationRepository(
     private suspend fun commitContent(
         observation: NotificationObservation,
         sourceLabel: String?,
-    ): NotificationCommit? {
+    ): NotificationTransactionResult {
         val normalized = normalizer.normalize(observation, sourceLabel)
-        if (normalized !is NormalizationResult.Normalized) return null
+        if (normalized !is NormalizationResult.Normalized) return NotificationTransactionResult(null)
 
         val identity = observation.identity
         val previous = dao.latestForIdentity(
@@ -146,23 +161,15 @@ class NotificationRepository(
             previous != null &&
             NotificationItemMerger.hasSameCapturedState(previous, entity)
         ) {
-            return NotificationCommit(previous, NotificationChangeKind.NO_CONTENT_CHANGE)
+            return NotificationTransactionResult(
+                NotificationCommit(previous, NotificationChangeKind.NO_CONTENT_CHANGE),
+            )
         }
         val itemId = if (outcome.isNewItem) dao.insertItem(entity) else {
             dao.updateItem(entity)
             entity.itemId
         }
         val committed = entity.copy(itemId = itemId)
-        val evidenceId = dao.insertHealthEvidence(
-            HealthEvidenceEntity(
-                kind = "NOTIFICATION_COMMITTED",
-                occurredAtEpochMillis = observation.observedAtEpochMillis,
-                runtimeSessionId = observation.runtimeSessionId,
-                listenerConnectionId = observation.listenerConnectionId,
-                itemId = itemId,
-            ),
-        )
-        trimHealthEvidenceIfNeeded(evidenceId)
         val presentationChanged = previous == null ||
             previous.title != committed.title ||
             previous.body != committed.body ||
@@ -172,18 +179,42 @@ class NotificationRepository(
             presentationChanged -> NotificationChangeKind.UPDATED
             else -> NotificationChangeKind.NO_CONTENT_CHANGE
         }
-        return NotificationCommit(committed, changeKind)
+        val positiveEvidence = PositiveHealthEvidence(
+            runtimeSessionId = observation.runtimeSessionId,
+            listenerConnectionId = observation.listenerConnectionId,
+            occurredAtEpochMillis = observation.observedAtEpochMillis,
+        )
+        val shouldRecordPositiveEvidence = outcome.isNewItem ||
+            positiveHealthEvidenceGate.isDue(positiveEvidence, UPDATE_HEALTH_EVIDENCE_WINDOW_MILLIS)
+        if (shouldRecordPositiveEvidence) {
+            val evidenceId = dao.insertHealthEvidence(
+                HealthEvidenceEntity(
+                    kind = "NOTIFICATION_COMMITTED",
+                    occurredAtEpochMillis = observation.observedAtEpochMillis,
+                    runtimeSessionId = observation.runtimeSessionId,
+                    listenerConnectionId = observation.listenerConnectionId,
+                    itemId = itemId,
+                ),
+            )
+            trimHealthEvidenceIfNeeded(evidenceId)
+        }
+        return NotificationTransactionResult(
+            commit = NotificationCommit(committed, changeKind),
+            positiveEvidence = positiveEvidence.takeIf { shouldRecordPositiveEvidence },
+        )
     }
 
-    private suspend fun commitRemoval(observation: NotificationObservation): NotificationCommit? {
+    private suspend fun commitRemoval(observation: NotificationObservation): NotificationTransactionResult {
         val identity = observation.identity
         val previous = dao.latestForIdentity(
             identity.sourcePackage,
             identity.sourceUserRef,
             identity.systemKey,
-        ) ?: return null
+        ) ?: return NotificationTransactionResult(null)
         if (previous.isRemoved) {
-            return NotificationCommit(previous, NotificationChangeKind.NO_CONTENT_CHANGE)
+            return NotificationTransactionResult(
+                NotificationCommit(previous, NotificationChangeKind.NO_CONTENT_CHANGE),
+            )
         }
 
         val removed = previous.copy(
@@ -208,7 +239,14 @@ class NotificationRepository(
             ),
         )
         trimHealthEvidenceIfNeeded(evidenceId)
-        return NotificationCommit(removed, NotificationChangeKind.REMOVED)
+        return NotificationTransactionResult(
+            commit = NotificationCommit(removed, NotificationChangeKind.REMOVED),
+            positiveEvidence = PositiveHealthEvidence(
+                runtimeSessionId = observation.runtimeSessionId,
+                listenerConnectionId = observation.listenerConnectionId,
+                occurredAtEpochMillis = observation.observedAtEpochMillis,
+            ),
+        )
     }
 
     private suspend fun trimHealthEvidenceIfNeeded(latestEvidenceId: Long) {
@@ -220,7 +258,61 @@ class NotificationRepository(
     private companion object {
         const val HEALTH_EVIDENCE_LIMIT = 10_000
         const val HEALTH_TRIM_INTERVAL = 256L
+        const val UPDATE_HEALTH_EVIDENCE_WINDOW_MILLIS = 5 * 60 * 1_000L
+        val POSITIVE_HEALTH_KINDS = setOf(
+            "LISTENER_CONNECTED",
+            "NOTIFICATION_COMMITTED",
+            "NOTIFICATION_REMOVED",
+            "RECOVERY_COMPLETED",
+        )
     }
+}
+
+private data class NotificationTransactionResult(
+    val commit: NotificationCommit?,
+    val positiveEvidence: PositiveHealthEvidence? = null,
+)
+
+internal data class PositiveHealthEvidence(
+    val runtimeSessionId: String,
+    val listenerConnectionId: String,
+    val occurredAtEpochMillis: Long,
+)
+
+internal class PositiveHealthEvidenceGate(
+    private val maxRememberedConnections: Int = 16,
+) {
+    private data class ConnectionKey(
+        val runtimeSessionId: String,
+        val listenerConnectionId: String,
+    )
+
+    private val lastRecordedAtByConnection = object : LinkedHashMap<ConnectionKey, Long>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ConnectionKey, Long>?): Boolean =
+            size > maxRememberedConnections
+    }
+
+    init {
+        require(maxRememberedConnections > 0)
+    }
+
+    @Synchronized
+    fun isDue(evidence: PositiveHealthEvidence, minimumIntervalMillis: Long): Boolean {
+        require(minimumIntervalMillis >= 0L)
+        val lastRecordedAt = lastRecordedAtByConnection[evidence.connectionKey()] ?: return true
+        return evidence.occurredAtEpochMillis < lastRecordedAt ||
+            evidence.occurredAtEpochMillis - lastRecordedAt >= minimumIntervalMillis
+    }
+
+    @Synchronized
+    fun markRecorded(evidence: PositiveHealthEvidence) {
+        lastRecordedAtByConnection[evidence.connectionKey()] = evidence.occurredAtEpochMillis
+    }
+
+    private fun PositiveHealthEvidence.connectionKey() = ConnectionKey(
+        runtimeSessionId = runtimeSessionId,
+        listenerConnectionId = listenerConnectionId,
+    )
 }
 
 internal fun buildPageItemsFromSourcesQuery(sources: Set<AppUserKey>): SupportSQLiteQuery {

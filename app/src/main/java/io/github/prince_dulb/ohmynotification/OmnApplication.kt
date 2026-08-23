@@ -5,6 +5,7 @@ import android.Manifest
 import android.app.NotificationManager
 import android.content.pm.PackageManager
 import io.github.prince_dulb.ohmynotification.capture.OmnNotificationListenerComponent
+import io.github.prince_dulb.ohmynotification.capture.ListenerRebindController
 import io.github.prince_dulb.ohmynotification.capture.NotificationSnapshotFactory
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStore
 import io.github.prince_dulb.ohmynotification.capture.SourceLabelResolver
@@ -59,6 +60,7 @@ class OmnAppGraph(application: Application) {
     val runtimeActionStore = RuntimeActionStore()
     val sourceLabelResolver = SourceLabelResolver(application.packageManager, application.packageName)
     val statusNotificationController = StatusNotificationController(application)
+    internal val listenerRebindController = ListenerRebindController(application)
     val snapshotFactory = NotificationSnapshotFactory(
         ownPackageName = application.packageName,
         runtimeSessionId = runtimeSessionId,

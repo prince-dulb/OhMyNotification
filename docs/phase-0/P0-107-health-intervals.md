@@ -25,6 +25,8 @@ sha256=d0d30bcf097a54f0ebc39d98948904262be2c208aedb73f6ba225117d684ac22
 - `NOTIFICATION_CALLBACK`；
 - `RECOVERY_COMPLETED`。
 
+生产候选将成功创建的新逻辑条目映射为 `NOTIFICATION_COMMITTED`，将移除映射为 `NOTIFICATION_REMOVED`；同一生命周期的连续正文更新仍完整更新通知条目，但只有当前监听连接距上一条正面证据至少 5 分钟时才追加健康事实。窗口只由真实事件触发，不安排心跳；因此不会为画蓝线额外唤醒，同时把持续进度通知造成的健康表写放大限制在每连接每 5 分钟至多一条更新证据。没有证据覆盖的历史段继续按黄色解释，不能用节流后的稀疏事实外推永久存活。
+
 当前明确边界：
 
 - 对应连接的 `LISTENER_DISCONNECTED`；

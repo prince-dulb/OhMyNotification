@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -67,6 +68,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.prince_dulb.ohmynotification.R
+import io.github.prince_dulb.ohmynotification.capture.ListenerRebindResult
+import io.github.prince_dulb.ohmynotification.capture.ListenerRebindTrigger
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
 import io.github.prince_dulb.ohmynotification.capture.LaunchableSource
 import io.github.prince_dulb.ohmynotification.core.health.HealthFact
@@ -110,6 +113,7 @@ internal fun OmnAppScreen(
     onOpenNotificationAccess: () -> Unit,
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
+    onRequestListenerRebind: (ListenerRebindTrigger) -> ListenerRebindResult,
     onSetSourceExcluded: (String, Boolean) -> Unit,
     onApplyIncludedSources: suspend (Set<AppUserKey>) -> Boolean,
     onOpenNotification: (NotificationItemEntity) -> RuntimeActionStatus,
@@ -122,18 +126,14 @@ internal fun OmnAppScreen(
     val launchableSources by produceState(emptyList<LaunchableSource>()) {
         value = withContext(Dispatchers.IO) { loadLaunchableSources() }
     }
-    val sourceChoices = remember(sources, launchableSources, selectedSources, currentUserRef) {
+    val filterChoices = remember(sources, launchableSources, selectedSources, currentUserRef) {
         val recorded = sources.associateBy { source ->
             AppUserKey(source.sourceUserRef, source.sourcePackage)
         }
         val launchable = launchableSources.associateBy(LaunchableSource::sourcePackage)
-        val launchableKeys = launchableSources.map { source ->
-            AppUserKey(currentUserRef, source.sourcePackage)
-        }
-        val allKeys = (launchableKeys + recorded.keys + selectedSources).distinct()
+        val allKeys = (recorded.keys + selectedSources).distinct()
         val userCountByPackage = allKeys.groupingBy(AppUserKey::sourcePackage).eachCount()
         allKeys
-            .distinct()
             .map { source ->
                 val summary = recorded[source]
                 val installed = launchable[source.sourcePackage]
@@ -153,15 +153,26 @@ internal fun OmnAppScreen(
                     .thenBy { choice -> choice.source.sourceUserRef },
             )
     }
-    val exclusionChoices = remember(sourceChoices) {
-        sourceChoices
-            .groupBy { choice -> choice.source.sourcePackage }
-            .map { (_, choices) ->
-                choices.first().copy(
+    val exclusionChoices = remember(sources, launchableSources, currentUserRef) {
+        val recordedByPackage = sources.groupBy(SourceSummaryRow::sourcePackage)
+        val launchableByPackage = launchableSources.associateBy(LaunchableSource::sourcePackage)
+        (launchableByPackage.keys + recordedByPackage.keys)
+            .distinct()
+            .map { sourcePackage ->
+                SourceChoice(
+                    source = AppUserKey(currentUserRef, sourcePackage),
+                    sourceLabel = recordedByPackage[sourcePackage]
+                        ?.maxByOrNull(SourceSummaryRow::latestTimeEpochMillis)
+                        ?.sourceLabelSnapshot
+                        ?: launchableByPackage[sourcePackage]?.sourceLabel
+                        ?: sourcePackage,
                     profileLabel = null,
-                    recordCount = choices.sumOf(SourceChoice::recordCount),
+                    recordCount = recordedByPackage[sourcePackage]
+                        .orEmpty()
+                        .sumOf(SourceSummaryRow::recordCount),
                 )
             }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, SourceChoice::sourceLabel))
     }
     var filterDraft by remember { mutableStateOf(emptySet<AppUserKey>()) }
     var filterSaving by remember { mutableStateOf(false) }
@@ -242,6 +253,10 @@ internal fun OmnAppScreen(
                         onOpenNotificationAccess = onOpenNotificationAccess,
                         onRequestStatusNotification = onRequestStatusNotification,
                         onOpenStatusChannel = onOpenStatusChannel,
+                        onRequestListenerRebind = {
+                            val result = onRequestListenerRebind(ListenerRebindTrigger.USER)
+                            coroutineScope.launch { snackbar.showSnackbar(result.userMessage()) }
+                        },
                     )
                 }
 
@@ -252,7 +267,7 @@ internal fun OmnAppScreen(
                 itemsIndexed(nodes, key = { _, node -> node.key }) { index, node ->
                     val next = nodes.getOrNull(index + 1)
                     val confirmedToNext = if (next == null) {
-                        true
+                        null
                     } else {
                         HealthTimelineDeriver.isFullyConfirmed(
                             intervals = healthIntervals,
@@ -309,9 +324,10 @@ internal fun OmnAppScreen(
     when (dialog) {
         SourceDialog.FILTER -> SourceSelectionDialog(
             title = "只查看这些应用",
-            sources = sourceChoices,
+            sources = filterChoices,
             checkedSources = filterDraft,
             emptyMeansAll = true,
+            supportingText = null,
             onToggle = { source, checked ->
                 filterDraft = filterDraft.toMutableSet().apply {
                     if (checked) add(source) else remove(source)
@@ -342,6 +358,7 @@ internal fun OmnAppScreen(
                 .filter { source -> exclusions.any { it.sourcePackage == source.sourcePackage } }
                 .toSet(),
             emptyMeansAll = false,
+            supportingText = "受 Android 限制，应用列表可能不完整；未列出的应用仍会默认记录，首次形成历史后即可在这里排除。当前排除按同包的所有资料生效。",
             onToggle = { source, excluded -> onSetSourceExcluded(source.sourcePackage, excluded) },
             onClear = null,
             onConfirm = { dialog = null },
@@ -360,6 +377,7 @@ private fun InboxHeader(
     onOpenNotificationAccess: () -> Unit,
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
+    onRequestListenerRebind: () -> Unit,
 ) {
     val presentation = StatusPresentationDeriver.derive(
         listenerAccessGranted = state.listenerAccessGranted,
@@ -418,6 +436,11 @@ private fun InboxHeader(
                 Text(stringResource(R.string.action_grant_notification_access))
             }
         }
+        if (state.listenerAccessGranted && !state.listenerConnected) {
+            Button(onClick = onRequestListenerRebind, modifier = Modifier.fillMaxWidth()) {
+                Text("请求重新连接监听")
+            }
+        }
         if (!state.statusNotificationGranted) {
             Button(onClick = onRequestStatusNotification, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.action_grant_status_notification))
@@ -447,7 +470,7 @@ private fun InboxHeader(
 @Composable
 private fun TimelineNodeCard(
     node: TimelineNode,
-    confirmedToNext: Boolean,
+    confirmedToNext: Boolean?,
     expanded: Boolean,
     onToggle: () -> Unit,
     onOpen: suspend (NotificationItemEntity) -> RuntimeActionStatus,
@@ -636,8 +659,12 @@ private fun NotificationEntry(
 }
 
 @Composable
-private fun HealthRail(confirmed: Boolean) {
-    val text = if (confirmed) "蓝色实线：记录时已确认运行" else "黄色虚线：该段未确认运行"
+private fun HealthRail(confirmed: Boolean?) {
+    val text = when (confirmed) {
+        true -> "蓝色实线：记录时已确认运行"
+        false -> "黄色虚线：该段未确认运行"
+        null -> "当前已加载时间轴的边界；不推断更早区间"
+    }
     Column(
         modifier = Modifier
             .width(18.dp)
@@ -651,13 +678,15 @@ private fun HealthRail(confirmed: Boolean) {
             shape = CircleShape,
         ) {}
         Canvas(Modifier.weight(1f).width(4.dp)) {
-            drawLine(
-                color = if (confirmed) ConfirmedBlue else UnconfirmedYellow,
-                start = Offset(size.width / 2f, 0f),
-                end = Offset(size.width / 2f, size.height),
-                strokeWidth = size.width,
-                pathEffect = if (confirmed) null else PathEffect.dashPathEffect(floatArrayOf(8f, 8f)),
-            )
+            if (confirmed != null) {
+                drawLine(
+                    color = if (confirmed) ConfirmedBlue else UnconfirmedYellow,
+                    start = Offset(size.width / 2f, 0f),
+                    end = Offset(size.width / 2f, size.height),
+                    strokeWidth = size.width,
+                    pathEffect = if (confirmed) null else PathEffect.dashPathEffect(floatArrayOf(8f, 8f)),
+                )
+            }
         }
     }
 }
@@ -723,6 +752,7 @@ private fun SourceSelectionDialog(
     sources: List<SourceChoice>,
     checkedSources: Set<AppUserKey>,
     emptyMeansAll: Boolean,
+    supportingText: String?,
     onToggle: (AppUserKey, Boolean) -> Unit,
     onClear: (() -> Unit)?,
     confirmLabel: String = "完成",
@@ -735,33 +765,42 @@ private fun SourceSelectionDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            if (sources.isEmpty()) {
-                Text("收到第一条通知后，来源应用会出现在这里。")
-            } else {
-                LazyColumn {
-                    items(sources, key = { source -> source.source }) { source ->
-                        val checked = source.source in checkedSources
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onToggle(source.source, !checked) }
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = checked,
-                                onCheckedChange = { onToggle(source.source, it) },
-                            )
-                            Column(Modifier.padding(start = 8.dp)) {
-                                Text(
-                                    if (source.profileLabel == null) source.sourceLabel
-                                    else "${source.sourceLabel} · ${source.profileLabel}",
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                supportingText?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (sources.isEmpty()) {
+                    Text("收到第一条通知后，来源应用会出现在这里。")
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 440.dp)) {
+                        items(sources, key = { source -> source.source }) { source ->
+                            val checked = source.source in checkedSources
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onToggle(source.source, !checked) }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { onToggle(source.source, it) },
                                 )
-                                Text(
-                                    "${source.recordCount} 条 · ${source.source.sourcePackage}",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Column(Modifier.padding(start = 8.dp)) {
+                                    Text(
+                                        if (source.profileLabel == null) source.sourceLabel
+                                        else "${source.sourceLabel} · ${source.profileLabel}",
+                                    )
+                                    Text(
+                                        "${source.recordCount} 条 · ${source.source.sourcePackage}",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
                             }
                         }
                     }
@@ -818,6 +857,14 @@ private fun groupTimeline(items: List<NotificationItemEntity>): List<TimelineNod
 private fun NotificationItemEntity.sourceName(): String = sourceLabelSnapshot ?: sourcePackage
 
 private fun Boolean.status(): String = if (this) "正常" else "不可用"
+
+private fun ListenerRebindResult.userMessage(): String = when (this) {
+    ListenerRebindResult.REQUESTED -> "已请求系统重新连接监听"
+    ListenerRebindResult.ALREADY_CONNECTED -> "监听已经连接"
+    ListenerRebindResult.ACCESS_REQUIRED -> "请先授予通知使用权"
+    ListenerRebindResult.COOLDOWN_OR_AUTOMATIC_LIMIT -> "刚请求过重连，请稍后再试"
+    ListenerRebindResult.PLATFORM_REJECTED -> "系统未接受重连请求"
+}
 
 private fun formatTime(epochMillis: Long): String = TIME_FORMATTER.format(
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()),

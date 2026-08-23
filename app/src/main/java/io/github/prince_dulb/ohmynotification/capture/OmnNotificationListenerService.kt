@@ -6,6 +6,7 @@ import io.github.prince_dulb.ohmynotification.OmnApplication
 import io.github.prince_dulb.ohmynotification.core.model.ObservedCallbackKind
 import java.util.UUID
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
@@ -47,6 +48,12 @@ class OmnNotificationListenerService : NotificationListenerService() {
         listenerConnectionId = null
         ListenerRuntimeState.setConnected(false)
         enqueue(ListenerWork.Disconnected(connectionId, System.currentTimeMillis()))
+        graph.serialScope.launch {
+            delay(REBIND_DELAY_MILLIS)
+            if (!ListenerRuntimeState.isConnected()) {
+                graph.listenerRebindController.request(ListenerRebindTrigger.AUTOMATIC)
+            }
+        }
         super.onListenerDisconnected()
     }
 
@@ -165,5 +172,6 @@ class OmnNotificationListenerService : NotificationListenerService() {
 
     private companion object {
         const val WORK_QUEUE_CAPACITY = 256
+        const val REBIND_DELAY_MILLIS = 3_000L
     }
 }
