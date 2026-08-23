@@ -1,6 +1,6 @@
 # P0-106 / SP-06 状态通知与前台服务 A/B
 
-状态：`[候选] PLATFORM_BASELINE_GO / REDMAGIC_AB_NOT_RUN`
+状态：`[候选] ORDINARY_STATUS_BASELINE_RUNNING / REDMAGIC_AB_NOT_RUN`
 
 核对时间：2026-08-23（Asia/Shanghai）
 
@@ -78,6 +78,10 @@ system-bound NotificationListenerService
 
 通过门不是“FGS 进程更常驻”，而是它在相同正确性条件下显著减少不可恢复漏记，并满足最终锁定的绝对资源预算。若两者正确性相同或证据不明显，选择普通 ongoing 方案。
 
-## 6. 当前真机前置状态
+## 6. 当前真机基线
 
-设备当前 `POST_NOTIFICATIONS=IGNORE`。这不影响核心通知监听，却会阻止两种拓扑在通知抽屉展示状态卡。该权限必须由应用内解释后交给用户决定，不通过 ADB 暗中授予；在权限开启前，SP-06 只能完成平台与构建验证，不能运行通知可见性 A/B。
+用户已在应用内授予 `POST_NOTIFICATIONS`，固定 `running_status` 渠道启用，普通 ongoing 状态卡已在目标设备通知栏实际显示。连续三次 Activity 刷新时，语义模型未变化，发布计数保持不变，证明普通刷新不会无条件调用 `notify()`。
+
+随后真机发现一个普通状态卡恢复缺口：监听器仍连接、权限和渠道均启用，但状态卡已不在系统活动通知列表；Activity 刷新因语义签名未变化而跳过补发。生产实现现改为“语义签名相同且固定通知仍活跃”时才跳过。Debug 定向取消固定状态卡后，探针先确认 `active=false`；Activity 真正重新进入前台后探针确认 `active=true`，发布计数前进。该回归只证明现有进程能在自然刷新点补回状态卡，不证明锁屏、长待机、重启或厂商清理后的持续可见性。
+
+`specialUse` FGS A/B 仍未运行；在普通监听拓扑出现可归因的实际漏记前，不因“更像常驻”而启用第二个长期组件。

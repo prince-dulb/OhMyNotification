@@ -157,7 +157,7 @@ class StatusNotificationController(private val context: Context) {
             latestTitle = latestTitle,
             latestEventTimeEpochMillis = latestEventTimeEpochMillis,
         )
-        if (signature == lastPublishedSignature) return
+        if (signature == lastPublishedSignature && isStatusNotificationActive()) return
         val publicVersion = baseBuilder()
             .setContentTitle(privateTitle)
             .setContentText(publicDetail)

@@ -2,6 +2,7 @@ package io.github.prince_dulb.ohmynotification.phase0
 
 import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,6 +17,16 @@ import org.json.JSONObject
 
 class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_CANCEL_STATUS_NOTIFICATION) {
+            val graph = (context.applicationContext as OmnApplication).graph
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
+            notificationManager.activeNotifications
+                .filter { item -> item.notification.channelId == graph.statusNotificationController.channelId() }
+                .forEach { item -> notificationManager.cancel(item.tag, item.id) }
+            resultCode = Activity.RESULT_OK
+            resultData = JSONObject().put("status", "OK").toString()
+            return
+        }
         if (intent.action != ACTION_DATABASE_STATS) return
         val result = runCatching {
             runBlocking { withContext(Dispatchers.IO) { readStats(context) } }
@@ -133,5 +144,7 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     private companion object {
         const val ACTION_DATABASE_STATS =
             "io.github.prince_dulb.ohmynotification.debug.DATABASE_STATS"
+        const val ACTION_CANCEL_STATUS_NOTIFICATION =
+            "io.github.prince_dulb.ohmynotification.debug.CANCEL_STATUS_NOTIFICATION"
     }
 }
