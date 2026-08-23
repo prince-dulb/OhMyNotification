@@ -80,6 +80,7 @@ import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationStat
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
 import io.github.prince_dulb.ohmynotification.data.AppUserKey
+import io.github.prince_dulb.ohmynotification.data.InboxSourceKeyCodec
 import io.github.prince_dulb.ohmynotification.data.SourceSummaryRow
 import io.github.prince_dulb.ohmynotification.core.timeline.TimelineGrouper
 import io.github.prince_dulb.ohmynotification.core.timeline.TimelineGroupingCandidate
@@ -777,7 +778,7 @@ private fun SourceSelectionDialog(
                     Text("收到第一条通知后，来源应用会出现在这里。")
                 } else {
                     LazyColumn(Modifier.heightIn(max = 440.dp)) {
-                        items(sources, key = { source -> source.source }) { source ->
+                        items(sources, key = { source -> sourceDialogSaveableItemKey(source.source) }) { source ->
                             val checked = source.source in checkedSources
                             Row(
                                 modifier = Modifier
@@ -855,6 +856,9 @@ private fun groupTimeline(items: List<NotificationItemEntity>): List<TimelineNod
 }
 
 private fun NotificationItemEntity.sourceName(): String = sourceLabelSnapshot ?: sourcePackage
+
+internal fun sourceDialogSaveableItemKey(source: AppUserKey): String =
+    InboxSourceKeyCodec.encode(source)
 
 private fun Boolean.status(): String = if (this) "正常" else "不可用"
 

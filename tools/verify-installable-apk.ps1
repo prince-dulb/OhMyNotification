@@ -7,7 +7,7 @@ Checks the locally built Debug APK's signature, alignment, identity, SDK boundar
 .\tools\verify-installable-apk.ps1
 
 .EXAMPLE
-.\tools\verify-installable-apk.ps1 -ApkPath .\artifacts\OhMyNotification-0.1.0-mvp-debug.apk
+.\tools\verify-installable-apk.ps1 -ApkPath .\artifacts\OhMyNotification-0.1.1-mvp-debug.apk
 #>
 param(
     [string]$ApkPath
@@ -81,7 +81,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $expectedPackage = 'io.github.prince_dulb.ohmynotification'
-$expectedVersion = '0.1.0-mvp'
+$expectedVersion = '0.1.1-mvp'
 if ($badging -notmatch "package: name='$([regex]::Escape($expectedPackage))'.*versionName='$([regex]::Escape($expectedVersion))'") {
     throw 'APK package identity or version does not match the MVP contract.'
 }

@@ -24,7 +24,7 @@ trap {
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($ApkPath)) {
-    $ApkPath = Join-Path $projectRoot 'artifacts\OhMyNotification-0.1.0-mvp-debug.apk'
+    $ApkPath = Join-Path $projectRoot 'artifacts\OhMyNotification-0.1.1-mvp-debug.apk'
 }
 if (-not (Test-Path -LiteralPath $ApkPath -PathType Leaf)) {
     throw 'Local delivery APK is missing. Build and copy the documented Debug artifact first.'
