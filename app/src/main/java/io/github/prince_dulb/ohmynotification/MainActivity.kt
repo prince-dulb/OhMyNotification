@@ -23,6 +23,7 @@ import io.github.prince_dulb.ohmynotification.ui.AppUiState
 import io.github.prince_dulb.ohmynotification.ui.OmnAppScreen
 import io.github.prince_dulb.ohmynotification.ui.theme.OhMyNotificationTheme
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -157,10 +158,17 @@ class MainActivity : ComponentActivity() {
     private fun requestListenerRebind(trigger: ListenerRebindTrigger): ListenerRebindResult =
         (application as OmnApplication).graph.listenerRebindController.request(trigger)
 
-    private fun setSourceExcluded(sourcePackage: String, excluded: Boolean) {
-        (application as OmnApplication).graph.serialScope.launch {
-            (application as OmnApplication).graph.repository.setSourceExcluded(sourcePackage, excluded)
+    private suspend fun setSourceExcluded(sourcePackage: String, excluded: Boolean): Boolean {
+        val graph = (application as OmnApplication).graph
+        val result = CompletableDeferred<Boolean>()
+        graph.serialScope.launch {
+            result.complete(
+                runCatching {
+                    graph.repository.setSourceExcluded(sourcePackage, excluded)
+                }.isSuccess,
+            )
         }
+        return result.await()
     }
 
     private fun openNotification(item: NotificationItemEntity): RuntimeActionStatus =

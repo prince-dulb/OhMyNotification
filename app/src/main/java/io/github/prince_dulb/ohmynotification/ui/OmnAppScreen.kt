@@ -31,7 +31,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
@@ -115,7 +118,7 @@ internal fun OmnAppScreen(
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
     onRequestListenerRebind: (ListenerRebindTrigger) -> ListenerRebindResult,
-    onSetSourceExcluded: (String, Boolean) -> Unit,
+    onSetSourceExcluded: suspend (String, Boolean) -> Boolean,
     onApplyIncludedSources: suspend (Set<AppUserKey>) -> Boolean,
     onOpenNotification: (NotificationItemEntity) -> RuntimeActionStatus,
     onOpenSourceApp: (String) -> Boolean,
@@ -123,6 +126,9 @@ internal fun OmnAppScreen(
 ) {
     val sources by repository.sourceSummaries.collectAsStateWithLifecycle(emptyList())
     val exclusions by repository.excludedSources.collectAsStateWithLifecycle(emptyList())
+    val excludedPackages = remember(exclusions) {
+        exclusions.mapTo(mutableSetOf()) { exclusion -> exclusion.sourcePackage }
+    }
     val selectedSources by includedSourceKeys.collectAsStateWithLifecycle(emptySet())
     val launchableSources by produceState(emptyList<LaunchableSource>()) {
         value = withContext(Dispatchers.IO) { loadLaunchableSources() }
@@ -304,6 +310,22 @@ internal fun OmnAppScreen(
                             status
                         },
                         hasRuntimeAction = repository::hasRuntimeAction,
+                        excludedPackages = excludedPackages,
+                        onSetSourceExcluded = { item, excluded ->
+                            val saved = onSetSourceExcluded(item.sourcePackage, excluded)
+                            coroutineScope.launch {
+                                snackbar.showSnackbar(
+                                    if (saved && excluded) {
+                                        "已不再记录 ${item.sourceName()} 的新通知"
+                                    } else if (saved) {
+                                        "已重新记录 ${item.sourceName()} 的新通知"
+                                    } else {
+                                        "未能保存设置，监控范围没有改变"
+                                    },
+                                )
+                            }
+                            saved
+                        },
                         onOpenSource = { sourcePackage ->
                             val opened = onOpenSourceApp(sourcePackage)
                             snackbar.showSnackbar(
@@ -368,7 +390,13 @@ internal fun OmnAppScreen(
                 .toSet(),
             emptyMeansAll = false,
             supportingText = "受 Android 限制，应用列表可能不完整；未列出的应用仍会默认记录，首次形成历史后即可在这里排除。当前排除按同包的所有资料生效。",
-            onToggle = { source, excluded -> onSetSourceExcluded(source.sourcePackage, excluded) },
+            onToggle = { source, excluded ->
+                coroutineScope.launch {
+                    if (!onSetSourceExcluded(source.sourcePackage, excluded)) {
+                        snackbar.showSnackbar("未能保存设置，监控范围没有改变")
+                    }
+                }
+            },
             onClear = null,
             onConfirm = { dialog = null },
             onDismiss = { dialog = null },
@@ -495,6 +523,8 @@ private fun TimelineNodeCard(
     onToggle: () -> Unit,
     onOpen: suspend (NotificationItemEntity) -> RuntimeActionStatus,
     hasRuntimeAction: (NotificationItemEntity) -> Boolean,
+    excludedPackages: Set<String>,
+    onSetSourceExcluded: suspend (NotificationItemEntity, Boolean) -> Boolean,
     onOpenSource: suspend (String) -> Unit,
 ) {
     Row(
@@ -536,6 +566,8 @@ private fun TimelineNodeCard(
                                 item = item,
                                 onOpen = onOpen,
                                 hasRuntimeAction = hasRuntimeAction,
+                                sourceExcluded = item.sourcePackage in excludedPackages,
+                                onSetSourceExcluded = onSetSourceExcluded,
                                 onOpenSource = onOpenSource,
                             )
                         }
@@ -545,6 +577,8 @@ private fun TimelineNodeCard(
                             item = node.anchor,
                             onOpen = onOpen,
                             hasRuntimeAction = hasRuntimeAction,
+                            sourceExcluded = node.anchor.sourcePackage in excludedPackages,
+                            onSetSourceExcluded = onSetSourceExcluded,
                             onOpenSource = onOpenSource,
                         )
                     }
@@ -553,6 +587,8 @@ private fun TimelineNodeCard(
                         item = node.anchor,
                         onOpen = onOpen,
                         hasRuntimeAction = hasRuntimeAction,
+                        sourceExcluded = node.anchor.sourcePackage in excludedPackages,
+                        onSetSourceExcluded = onSetSourceExcluded,
                         onOpenSource = onOpenSource,
                     )
                 }
@@ -566,11 +602,19 @@ private fun NotificationEntry(
     item: NotificationItemEntity,
     onOpen: suspend (NotificationItemEntity) -> RuntimeActionStatus,
     hasRuntimeAction: (NotificationItemEntity) -> Boolean,
+    sourceExcluded: Boolean,
+    onSetSourceExcluded: suspend (NotificationItemEntity, Boolean) -> Boolean,
     onOpenSource: suspend (String) -> Unit,
 ) {
     var launch by remember { mutableStateOf(false) }
     var openSource by remember { mutableStateOf(false) }
     var showFallbackDialog by remember { mutableStateOf(false) }
+    var actionMenuExpanded by remember { mutableStateOf(false) }
+    var showExclusionDialog by remember { mutableStateOf(false) }
+    var requestedExcluded by remember { mutableStateOf(true) }
+    var exclusionSaving by remember { mutableStateOf(false) }
+    var exclusionError by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     var runtimeAvailable by remember(item.itemId, item.lastUpdatedAtEpochMillis) {
         mutableStateOf(hasRuntimeAction(item))
     }
@@ -607,11 +651,45 @@ private fun NotificationEntry(
                 )
                 Text(item.sourceName(), fontWeight = FontWeight.SemiBold)
             }
-            Text(
-                formatTime(item.sortTimeEpochMillis),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    formatTime(item.sortTimeEpochMillis),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Box {
+                    IconButton(
+                        onClick = { actionMenuExpanded = true },
+                        modifier = Modifier.semantics {
+                            contentDescription = "${item.sourceName()} 通知操作"
+                        },
+                    ) {
+                        Text("⋮", style = MaterialTheme.typography.titleLarge)
+                    }
+                    DropdownMenu(
+                        expanded = actionMenuExpanded,
+                        onDismissRequest = { actionMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (sourceExcluded) {
+                                        "重新记录这个 App"
+                                    } else {
+                                        "不要再记录这个 App"
+                                    },
+                                )
+                            },
+                            onClick = {
+                                actionMenuExpanded = false
+                                exclusionError = false
+                                requestedExcluded = !sourceExcluded
+                                showExclusionDialog = true
+                            },
+                        )
+                    }
+                }
+            }
         }
         item.title?.let { title ->
             Text(
@@ -673,6 +751,71 @@ private fun NotificationEntry(
             },
             dismissButton = {
                 TextButton(onClick = { showFallbackDialog = false }) { Text("取消") }
+            },
+        )
+    }
+    if (showExclusionDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!exclusionSaving) showExclusionDialog = false
+            },
+            title = {
+                Text(
+                    if (requestedExcluded) {
+                        "不要再记录 ${item.sourceName()}？"
+                    } else {
+                        "重新记录 ${item.sourceName()}？"
+                    },
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (requestedExcluded) {
+                            "之后不再记录这个 App 的新通知；已有记录会保留。当前版本对同一 App 的所有资料生效。"
+                        } else {
+                            "之后会重新记录这个 App 的新通知；排除期间的通知无法补回。当前版本对同一 App 的所有资料生效。"
+                        },
+                    )
+                    if (exclusionError) {
+                        Text(
+                            "设置没有保存，请重试。",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !exclusionSaving,
+                    onClick = {
+                        exclusionSaving = true
+                        exclusionError = false
+                        coroutineScope.launch {
+                            val saved = onSetSourceExcluded(item, requestedExcluded)
+                            exclusionSaving = false
+                            exclusionError = !saved
+                            if (saved) showExclusionDialog = false
+                        }
+                    },
+                ) {
+                    Text(
+                        when {
+                            exclusionSaving -> "保存中…"
+                            requestedExcluded -> "不再记录"
+                            else -> "重新记录"
+                        },
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !exclusionSaving,
+                    onClick = { showExclusionDialog = false },
+                ) {
+                    Text("取消")
+                }
             },
         )
     }
