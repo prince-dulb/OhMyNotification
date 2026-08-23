@@ -1,0 +1,47 @@
+{
+  "datasetId": "health-evidence-v1",
+  "schemaVersion": 1,
+  "seed": 2026082307,
+  "sentinel": "OMN_SYNTHETIC_HEALTH_EVIDENCE",
+  "intervalStates": [
+    "CONFIRMED_RUNNING",
+    "UNCONFIRMED"
+  ],
+  "positiveEvidenceKinds": [
+    "LISTENER_CONNECTED",
+    "NOTIFICATION_CALLBACK",
+    "RECOVERY_COMPLETED"
+  ],
+  "explicitBoundaries": [
+    "LISTENER_DISCONNECTED",
+    "ACCESS_NOT_GRANTED"
+  ],
+  "facets": [
+    "PROCESS",
+    "LISTENER",
+    "LISTENER_ACCESS",
+    "STATUS_PERMISSION",
+    "STATUS_CHANNEL"
+  ],
+  "caseIds": [
+    "current-connection-live-projection",
+    "between-adjacent-positive-evidence",
+    "explicit-disconnect-boundary",
+    "sudden-termination-is-unconfirmed",
+    "process-and-access-alone-are-unconfirmed",
+    "status-permission-and-channel-are-independent",
+    "listener-access-revocation-boundary",
+    "same-time-sequence-order",
+    "cross-session-connection-reuse",
+    "wall-clock-rollback-diagnostic",
+    "random-complete-gapless-coverage"
+  ],
+  "workloads": {
+    "randomCoverageIterations": 1000,
+    "rangeStartMillis": 0,
+    "rangeEndMillis": 1100,
+    "periodicWakeups": 0,
+    "syntheticSessionPrefix": "session-synthetic-",
+    "syntheticConnectionPrefix": "connection-synthetic-"
+  }
+}
