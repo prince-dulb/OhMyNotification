@@ -134,6 +134,7 @@
 - 测试数据校验：`.\tools\verify-testdata.ps1`
 - instrumentation 测试 APK 编译：`.\gradlew.bat :app:assembleDebugAndroidTest`
 - Android 设备测试（有目标设备时）：`.\gradlew.bat connectedDebugAndroidTest`
+- Android 安装启动冒烟（有授权设备时）：`.\tools\install-and-smoke-test.ps1`
 - Android 静态检查：`.\gradlew.bat lint`
 - 调试构建：`.\gradlew.bat :app:assembleDebug`
 - 本地未签名/默认签名发布构建检查：`.\gradlew.bat :app:assembleRelease`
@@ -141,7 +142,7 @@
 - 可安装 Debug APK 校验：`.\tools\verify-installable-apk.ps1`
 - 无设备构建总门：`.\gradlew.bat test lint :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`
 
-真机命令、性能命令和 Spike 专用任务在建立后补入本节。真实设备输出先进入 `.local-evidence/`，去敏摘要再进入 Git。
+真机命令、性能命令和 Spike 专用任务在建立后补入本节。安装启动冒烟将时间戳、APK 摘要、去标识设备能力与结果写入 `.local-evidence/phase-0/P0-APK-smoke-<timestamp>.json`；真实设备输出先进入 `.local-evidence/`，去敏摘要再进入 Git。
 
 ## 变更红线
 
