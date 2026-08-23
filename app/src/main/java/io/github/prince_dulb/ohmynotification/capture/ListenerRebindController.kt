@@ -66,31 +66,52 @@ internal data class ListenerRebindDebugSnapshot(
 )
 
 internal class ListenerRebindGate(
-    private val cooldownMillis: Long = 10_000L,
+    private val automaticCooldownMillis: Long = 10_000L,
+    private val userCooldownMillis: Long = 1_000L,
     private val maximumAutomaticRequests: Int = 3,
 ) {
     private var lastRequestAtElapsedMillis: Long? = null
+    private var lastUserRequestAtElapsedMillis: Long? = null
     private var automaticRequestCount = 0
 
     init {
-        require(cooldownMillis >= 0L)
+        require(automaticCooldownMillis >= 0L)
+        require(userCooldownMillis >= 0L)
         require(maximumAutomaticRequests >= 0)
     }
 
     @Synchronized
     fun tryAcquire(trigger: ListenerRebindTrigger, nowElapsedMillis: Long): Boolean {
-        val lastRequest = lastRequestAtElapsedMillis
-        if (lastRequest != null && nowElapsedMillis - lastRequest in 0 until cooldownMillis) {
-            return false
+        when (trigger) {
+            ListenerRebindTrigger.AUTOMATIC -> {
+                if (
+                    isWithinCooldown(
+                        lastRequestAtElapsedMillis,
+                        nowElapsedMillis,
+                        automaticCooldownMillis,
+                    ) || automaticRequestCount >= maximumAutomaticRequests
+                ) {
+                    return false
+                }
+                automaticRequestCount += 1
+            }
+            ListenerRebindTrigger.USER -> {
+                if (
+                    isWithinCooldown(
+                        lastUserRequestAtElapsedMillis,
+                        nowElapsedMillis,
+                        userCooldownMillis,
+                    )
+                ) {
+                    return false
+                }
+                lastUserRequestAtElapsedMillis = nowElapsedMillis
+            }
         }
-        if (
-            trigger == ListenerRebindTrigger.AUTOMATIC &&
-            automaticRequestCount >= maximumAutomaticRequests
-        ) {
-            return false
-        }
-        if (trigger == ListenerRebindTrigger.AUTOMATIC) automaticRequestCount += 1
         lastRequestAtElapsedMillis = nowElapsedMillis
         return true
     }
+
+    private fun isWithinCooldown(last: Long?, now: Long, cooldownMillis: Long): Boolean =
+        last != null && now - last in 0 until cooldownMillis
 }

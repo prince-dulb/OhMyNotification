@@ -24,8 +24,8 @@ android {
         targetSdk = 36
         testApplicationId = "io.github.prince_dulb.ohmynotification.test"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 3
-        versionName = "0.1.1-mvp"
+        versionCode = 4
+        versionName = "0.1.2-mvp"
     }
 
     buildTypes {

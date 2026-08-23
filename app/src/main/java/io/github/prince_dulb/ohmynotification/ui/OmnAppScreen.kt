@@ -178,6 +178,7 @@ internal fun OmnAppScreen(
     var filterDraft by remember { mutableStateOf(emptySet<AppUserKey>()) }
     var filterSaving by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
+    var rebindFeedback by remember { mutableStateOf<String?>(null) }
     val expandedDrawers = remember { mutableStateMapOf<Long, Boolean>() }
     val snackbar = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -223,6 +224,10 @@ internal fun OmnAppScreen(
     }
     val listState = rememberLazyListState()
 
+    LaunchedEffect(state.listenerConnected) {
+        if (state.listenerConnected) rebindFeedback = null
+    }
+
     LaunchedEffect(nodes.size, loadedItems.size) {
         if (nodes.isEmpty()) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
@@ -254,9 +259,12 @@ internal fun OmnAppScreen(
                         onOpenNotificationAccess = onOpenNotificationAccess,
                         onRequestStatusNotification = onRequestStatusNotification,
                         onOpenStatusChannel = onOpenStatusChannel,
+                        rebindFeedback = rebindFeedback,
                         onRequestListenerRebind = {
                             val result = onRequestListenerRebind(ListenerRebindTrigger.USER)
-                            coroutineScope.launch { snackbar.showSnackbar(result.userMessage()) }
+                            val message = result.userMessage()
+                            rebindFeedback = message
+                            coroutineScope.launch { snackbar.showSnackbar(message) }
                         },
                     )
                 }
@@ -378,6 +386,7 @@ private fun InboxHeader(
     onOpenNotificationAccess: () -> Unit,
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
+    rebindFeedback: String?,
     onRequestListenerRebind: () -> Unit,
 ) {
     val presentation = StatusPresentationDeriver.derive(
@@ -440,6 +449,16 @@ private fun InboxHeader(
         if (state.listenerAccessGranted && !state.listenerConnected) {
             Button(onClick = onRequestListenerRebind, modifier = Modifier.fillMaxWidth()) {
                 Text("请求重新连接监听")
+            }
+            rebindFeedback?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OutlinedButton(onClick = onOpenNotificationAccess, modifier = Modifier.fillMaxWidth()) {
+                Text("打开通知使用权设置")
             }
         }
         if (!state.statusNotificationGranted) {
@@ -863,10 +882,10 @@ internal fun sourceDialogSaveableItemKey(source: AppUserKey): String =
 private fun Boolean.status(): String = if (this) "正常" else "不可用"
 
 private fun ListenerRebindResult.userMessage(): String = when (this) {
-    ListenerRebindResult.REQUESTED -> "已请求系统重新连接监听"
+    ListenerRebindResult.REQUESTED -> "已请求系统连接；状态变为“正在记录通知”才算成功"
     ListenerRebindResult.ALREADY_CONNECTED -> "监听已经连接"
     ListenerRebindResult.ACCESS_REQUIRED -> "请先授予通知使用权"
-    ListenerRebindResult.COOLDOWN_OR_AUTOMATIC_LIMIT -> "刚请求过重连，请稍后再试"
+    ListenerRebindResult.COOLDOWN_OR_AUTOMATIC_LIMIT -> "操作太快，请稍等一秒再试"
     ListenerRebindResult.PLATFORM_REJECTED -> "系统未接受重连请求"
 }
 

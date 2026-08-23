@@ -29,6 +29,6 @@
 .\tools\install-and-smoke-test.ps1
 ```
 
-`artifacts/OhMyNotification-0.1.1-mvp-debug.apk` 是本地生成、带 Android Debug 签名的当前侧载 MVP；它不会进入 Git，也不是公开 release。目标红魔设备使用覆盖安装保留本地归档与授权。
+`artifacts/OhMyNotification-0.1.2-mvp-debug.apk` 是本地生成、带 Android Debug 签名的当前侧载 MVP；它不会进入 Git，也不是公开 release。目标红魔设备使用覆盖安装保留本地归档与授权。
 
 详细需求、架构边界和阶段门见 [`docs/开发计划书/README.md`](docs/开发计划书/README.md)。
