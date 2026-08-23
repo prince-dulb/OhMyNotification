@@ -8,6 +8,16 @@
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
+            android:name="io.github.prince_dulb.ohmynotification.testsource.ControlledNotificationCommandActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+        <activity
+            android:name="io.github.prince_dulb.ohmynotification.testsource.ControlledTargetJavaActivity"
+            android:exported="false"
+            android:process=":controlled_target" />
+        <activity
             android:name="io.github.prince_dulb.ohmynotification.testsource.ControlledTargetActivity"
             android:exported="false" />
     </application>

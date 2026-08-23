@@ -17,7 +17,7 @@ Installs or invokes the Phase 0 instrumentation APK as an independent synthetic 
 #>
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('publish', 'update', 'remove', 'contract')]
+    [ValidateSet('publish', 'update', 'remove', 'open', 'contract')]
     [string]$Operation,
 
     [ValidateSet('missing-title', 'missing-text', 'unicode', 'long-text', 'invalid-time', 'action')]
@@ -117,8 +117,8 @@ if ($Install) {
     $null = Invoke-Adb -Arguments @('install', '-r', '-t', $testApk)
 }
 
-$targetPath = Invoke-Adb -Arguments @('shell', 'pm', 'path', $targetPackage)
-$testPath = Invoke-Adb -Arguments @('shell', 'pm', 'path', $testPackage)
+$targetPath = @(Invoke-Adb -Arguments @('shell', 'pm', 'path', $targetPackage))
+$testPath = @(Invoke-Adb -Arguments @('shell', 'pm', 'path', $testPackage))
 if ($targetPath.Count -eq 0 -or $testPath.Count -eq 0) {
     throw 'The target or instrumentation package is not installed. Re-run with -Install.'
 }

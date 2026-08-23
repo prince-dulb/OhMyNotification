@@ -1,9 +1,9 @@
 package io.github.prince_dulb.ohmynotification.testsource
 
-import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,38 +17,23 @@ class ControlledNotificationCommandTest {
         val operation = arguments.getString(ARG_OPERATION)
         assumeTrue("No controlled-source command requested", !operation.isNullOrBlank())
 
-        val context = instrumentation.context
-        val source = ControlledNotificationSource(context)
-        grantNotificationPermission(context)
+        grantNotificationPermission(instrumentation.context)
+        val client = ControlledNotificationClient(instrumentation)
 
         when (operation) {
             OPERATION_PUBLISH -> {
-                source.publish(arguments.caseId(), isUpdate = false)
-                awaitActive(source)
+                assertTrue(client.execute(operation, arguments.caseId()).active)
             }
             OPERATION_UPDATE -> {
-                source.publish(arguments.caseId(), isUpdate = true)
-                awaitActive(source)
+                assertTrue(client.execute(operation, arguments.caseId()).active)
             }
             OPERATION_REMOVE -> {
-                source.remove()
-                val deadline = SystemClock.elapsedRealtime() + REMOVE_TIMEOUT_MILLIS
-                while (source.activeNotification() != null && SystemClock.elapsedRealtime() < deadline) {
-                    SystemClock.sleep(25L)
-                }
-                assertNull(source.activeNotification())
+                assertFalse(client.execute(operation, arguments.caseId()).active)
+            }
+            OPERATION_OPEN -> {
+                assertTrue(client.execute(operation, arguments.caseId()).targetOpened)
             }
             else -> error("Unsupported controlled-source operation: $operation")
-        }
-    }
-
-    private fun awaitActive(source: ControlledNotificationSource) {
-        val deadline = SystemClock.elapsedRealtime() + ACTIVE_TIMEOUT_MILLIS
-        while (source.activeNotification() == null && SystemClock.elapsedRealtime() < deadline) {
-            SystemClock.sleep(25L)
-        }
-        requireNotNull(source.activeNotification()) {
-            "Synthetic notification did not become active"
         }
     }
 
@@ -61,8 +46,7 @@ class ControlledNotificationCommandTest {
         const val OPERATION_PUBLISH = "publish"
         const val OPERATION_UPDATE = "update"
         const val OPERATION_REMOVE = "remove"
+        const val OPERATION_OPEN = "open"
         const val DEFAULT_CASE_ID = "action"
-        const val ACTIVE_TIMEOUT_MILLIS = 2_000L
-        const val REMOVE_TIMEOUT_MILLIS = 2_000L
     }
 }

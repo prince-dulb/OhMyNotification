@@ -1,6 +1,6 @@
 # P0-004 测试基础设施基线
 
-状态：`[已验证] GO（设备运行 NOT_RUN）`
+状态：`[已验证] GO（红魔 11 Pro+ / Android 16 设备合同通过）`
 
 验收时间：2026-08-23（Asia/Shanghai）
 
@@ -15,8 +15,8 @@
 | T0 | 固定数据校验、PowerShell 语法检查、production/test APK 内容与权限扫描 | 已通过 |
 | T1 | `notification-fields-v1` 的 SHA-256、隐私哨兵和固定种子派生 ID 契约，共 2 项 JVM 测试 | 2/2 通过 |
 | T2 | 尚无 Room schema 或持久化测试 | `NOT_APPLICABLE`；等待 G3 |
-| T3 | AndroidX Runner 测试 APK 可编译，包含发布—更新—移除契约及受控内部落页 | 构建通过；首次设备运行 `FAIL`，修复中 |
-| T4 | `invoke-controlled-notification.ps1` 可选择合成 case 并执行发布、更新、移除或完整契约 | 命令已建立；同受控源缺陷，尚未通过红魔验证 |
+| T3 | AndroidX Runner 测试 APK 可编译，包含发布—更新—动作落地—移除契约及受控内部落页 | 红魔 11 Pro+ / Android 16 通过 |
+| T4 | `invoke-controlled-notification.ps1` 可选择合成 case 并执行发布、更新、动作落地、移除或完整契约 | 完整合同已在红魔通过 |
 
 测试 APK 使用 `io.github.prince_dulb.ohmynotification.test`，不增加第二个产品模块。固定测试依赖为 JUnit `4.13.2`、AndroidX Test Runner `1.7.0` 和 Ext JUnit `1.3.0`；AndroidX 版本依据为验收日核对的[官方稳定版清单](https://developer.android.com/jetpack/androidx/releases/test)。
 
@@ -35,7 +35,7 @@
 ## 4. 可控通知源与隔离
 
 - instrumentation 测试 APK 从合成数据发布、更新和移除一个稳定身份的通知。
-- `action` case 使用不可导出的测试 Activity 构造 `PendingIntent`，用于区分“通知存在”和“受控动作能实际落页”。
+- `action` case 使用不可导出的纯 Java 测试 Activity 构造 `PendingIntent`；合同会实际调用 `send()`，并以目标页私有回执区分“动作引用存在”和“动作确实落地”。
 - 命令测试只有收到 instrumentation 参数时才执行；普通设备测试不会留下通知。
 - 测试 APK 实测只有 `POST_NOTIFICATIONS` 与 AndroidX Runner 所需的 `REORDER_TASKS`，没有网络或账号权限。
 - production APK 不含 `OMN_TEST_ONLY_NOTIFICATION`、`ControlledNotificationSource`、`notification-fields-v1` 或测试资产。
@@ -48,7 +48,7 @@
 .\gradlew.bat test lint :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
 ```
 
-结果：`BUILD SUCCESSFUL`，124 个 task；JVM 测试 2 项全部通过，Lint 为 `0 errors, 7 warnings`，Debug、未签名 Release 和 Android 测试 APK 均成功生成。
+结果：`BUILD SUCCESSFUL`，126 个 task；JVM 测试 2 项全部通过，Lint 无错误，Debug、未签名 Release、Android 测试 APK 和设备测试均成功完成。
 
 ### 固定数据与 APK 边界
 
@@ -61,7 +61,7 @@
 三项均通过。Debug APK 通过 Android Debug 签名、4/16 KiB 对齐、包名、版本、Launcher、Android 16 `minSdk/targetSdk` 和 `arm64-v8a` 检查；本次构建 SHA-256 为：
 
 ```text
-3f20e8a09f94f6517a0312efaaaa29cbb044090da8ac30d748f5ce250143c60f
+2830d999e65fc18920e13c218daac0c65feed079e3d6fcef874dc63adb907fdc
 ```
 
 ## 6. 路径故障与修复
@@ -70,16 +70,33 @@
 
 用户将正式工作区改为 ASCII 名称后，未改测试代码的标准 `gradlew test` 立即恢复通过。项目据此删除 `android.overridePathCheck`，把 ASCII 工作区写入工程规则；目录联接和关闭测试均不是接受的解决方案。
 
-## 7. 决策与未验证项
+## 7. Android 16 设备缺陷与修复
+
+首次设备运行暴露了三处只靠编译无法发现的问题：
+
+1. instrumentation 测试代码虽然取得测试 APK 的 `Context`，仍由产品进程 UID 调用通知服务，Android 16 因调用 UID 与通知包名不一致抛出 `SecurityException`；修复为由测试 APK 自身的导出命令 Activity 执行。
+2. 独立启动的测试 APK 组件不能依赖 instrumentation 目标应用提供 Kotlin 运行库；命令入口和落页改为纯 Java，测试驱动仍留在 Kotlin instrumentation 中。
+3. 固定数据的历史 `postedAtEpochMillis` 被通知服务统计为 `numTooOld`，表现为已入队但从未发布；测试通知改用当前展示时间，并把固定夹具时间保存在测试专用 extra 中。
+
+动作目标页使用测试 APK 私有子进程，避免命令入口等待落地回执时阻塞同一主线程；目标页写入回执后立即结束，不残留测试界面。
+
+设备命令：
+
+```powershell
+.\tools\invoke-controlled-notification.ps1 -Operation contract -Install
+.\gradlew.bat connectedDebugAndroidTest
+```
+
+结果：完整合同 `OK (1 test)`，发布、同身份更新、真实动作落地和移除全部通过；完整设备测试 `BUILD SUCCESSFUL`，无失败，未携带命令参数的命令测试按设计跳过。
+
+## 8. 决策与未验证项
 
 `P0-004 = GO`：桌面侧测试基础设施、数据基线、测试 APK 隔离和构建命令成立，可以进入 P0-005。
 
-初次验收时没有授权 Android 设备连接。2026-08-23 补跑 `connectedDebugAndroidTest` 后，发现 instrumentation 代码虽取得测试 APK 的 `Context`，实际仍以产品进程 UID 调用通知服务，Android 16 因调用 UID 与通知包名不一致抛出 `SecurityException`。该结果已把受控通知源的设备状态从 `NOT_RUN` 更新为 `FAIL`，替代测试入口在通过前不恢复为 GO。
+P0-004 的桌面门、APK 隔离和红魔设备合同均已通过。以下内容仍不属于本任务的通过范围：
 
-以下内容仍未通过：
-
-- `connectedDebugAndroidTest`；
-- 受控通知在 Android 16 上的实际发布、更新、移除与落页；
-- 红魔后台行为、B 站真实通知、长期动作寿命和性能。
+- P0-101 debug 监听器是否收到受控源和真实 B 站回调；
+- 红魔长待机与重启后的后台行为；
+- B 站真实通知、长期动作寿命和性能。
 
 这些未运行项必须在相应设备任务中取得真实证据，不能由本任务的绿色构建结果替代。

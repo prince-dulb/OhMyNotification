@@ -7,14 +7,19 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 
 internal fun grantNotificationPermission(context: Context) {
-    if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+    val packageManager = context.packageManager
+    val packageName = context.packageName
+    if (
+        packageManager.checkPermission(Manifest.permission.POST_NOTIFICATIONS, packageName) !=
+        PackageManager.PERMISSION_GRANTED
+    ) {
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
-            context.packageName,
+            packageName,
             Manifest.permission.POST_NOTIFICATIONS,
         )
     }
     assertEquals(
         PackageManager.PERMISSION_GRANTED,
-        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS),
+        packageManager.checkPermission(Manifest.permission.POST_NOTIFICATIONS, packageName),
     )
 }

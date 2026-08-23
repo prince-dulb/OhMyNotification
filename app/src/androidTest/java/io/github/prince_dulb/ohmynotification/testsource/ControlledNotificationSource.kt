@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
+import android.os.Bundle
 import android.service.notification.StatusBarNotification
 
 internal class ControlledNotificationSource(private val context: Context) {
@@ -41,7 +42,14 @@ internal class ControlledNotificationSource(private val context: Context) {
             .setContentTitle(displayTitle)
             .setContentText(displayText)
             .setSubText(fixture.sourcePackage)
-            .setWhen(fixture.postedAtEpochMillis)
+            // Android drops notifications whose displayed `when` is too old. Keep the
+            // deterministic fixture time separately while posting with a current time.
+            .setWhen(System.currentTimeMillis())
+            .addExtras(
+                Bundle().apply {
+                    putLong(EXTRA_FIXTURE_POSTED_AT, fixture.postedAtEpochMillis)
+                },
+            )
             .setShowWhen(true)
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setContentIntent(targetPendingIntent)
@@ -86,6 +94,7 @@ internal class ControlledNotificationSource(private val context: Context) {
     }
 
     companion object {
+        const val EXTRA_FIXTURE_POSTED_AT = "omn.synthetic.fixture_posted_at_epoch_millis"
         const val MARKER = "OMN_TEST_ONLY_NOTIFICATION"
         const val EXTRA_CASE_ID = "omn.synthetic.case_id"
         const val EXTRA_TARGET_TOKEN = "omn.synthetic.target_token"
