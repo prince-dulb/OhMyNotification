@@ -44,6 +44,6 @@
 
 当前手机 ADB 在线、应用已安装。用户关闭再开启通知使用权后，检查点观察到 `access=true / bound=true / process=true`，监听器随即写入连接与活动通知补扫事件。
 
-随后运行 instrumentation 合同时，Runner 强停产品进程，检查点变为 `access=true / bound=false / process=false`。启动应用并调用 Android 官方 `NotificationListenerService.requestRebind()` 后，进程恢复，但红魔在 10 秒观察窗口内仍保持 `bound=false`；因此当前 ROM 上不能把应用内 rebind 请求当作可靠恢复手段，仍需用户再次切换通知使用权后继续实验。该行为来自测试 Runner 的人工强停路径，不得直接外推为普通系统回收结论。
+随后运行 instrumentation 合同时，Runner 强停产品进程，检查点变为 `access=true / bound=false / process=false`。启动应用并调用 Android `NotificationListenerService.requestRebind()` 后，进程恢复，但红魔在 10 秒观察窗口内仍保持 `bound=false`。官方 API 说明该调用是断连状态下的安全请求，并不承诺宿主一定立即采取动作；因此不能把它当作通用强制恢复手段，仍需用户再次切换通知使用权后继续实验。该行为来自测试 Runner 的人工强停路径，不得直接外推为普通系统回收结论。
 
 受控源已增加不强停产品进程的 `-Direct` 合同并验证四步自身行为通过。重新授权后的下一步是：先采集 `before-direct-contract`，运行直驱合同，再核对监听事件恰为同身份发布、更新和移除。P0-105 的锁屏、普通系统回收、重启及厂商策略矩阵尚未运行，不能给出 `GO`。
