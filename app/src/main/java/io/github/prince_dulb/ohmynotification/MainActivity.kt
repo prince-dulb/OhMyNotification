@@ -14,9 +14,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
 import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
 import io.github.prince_dulb.ohmynotification.capture.OmnNotificationListenerComponent
+import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
+import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.ui.AppUiState
 import io.github.prince_dulb.ohmynotification.ui.OmnAppScreen
 import io.github.prince_dulb.ohmynotification.ui.theme.OhMyNotificationTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val uiState = mutableStateOf(AppUiState())
@@ -36,8 +39,11 @@ class MainActivity : ComponentActivity() {
             OhMyNotificationTheme {
                 OmnAppScreen(
                     state = uiState.value,
+                    repository = (application as OmnApplication).graph.repository,
                     onOpenNotificationAccess = ::openNotificationAccessSettings,
                     onRequestStatusNotification = ::requestStatusNotificationPermission,
+                    onSetSourceExcluded = ::setSourceExcluded,
+                    onOpenNotification = ::openNotification,
                 )
             }
         }
@@ -88,4 +94,13 @@ class MainActivity : ComponentActivity() {
     private fun requestStatusNotificationPermission() {
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
+
+    private fun setSourceExcluded(sourcePackage: String, excluded: Boolean) {
+        (application as OmnApplication).graph.serialScope.launch {
+            (application as OmnApplication).graph.repository.setSourceExcluded(sourcePackage, excluded)
+        }
+    }
+
+    private fun openNotification(item: NotificationItemEntity): RuntimeActionStatus =
+        (application as OmnApplication).graph.repository.sendRuntimeAction(item)
 }

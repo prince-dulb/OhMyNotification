@@ -170,10 +170,15 @@ try {
         throw 'The application process was not observed after launch.'
     }
 
-    $activityOutput = Invoke-Adb -Arguments @('shell', 'dumpsys', 'activity', 'activities')
-    $activityText = $activityOutput -join [Environment]::NewLine
     $componentPattern = [regex]::Escape($componentName)
-    $result.resumedActivityObserved = $activityText -match "(mResumedActivity|topResumedActivity).*${componentPattern}"
+    for ($attempt = 0; $attempt -lt 10 -and -not $result.resumedActivityObserved; $attempt += 1) {
+        $activityOutput = Invoke-Adb -Arguments @('shell', 'dumpsys', 'activity', 'activities')
+        $activityText = $activityOutput -join [Environment]::NewLine
+        $result.resumedActivityObserved = $activityText -match "(mResumedActivity|topResumedActivity|ResumedActivity).*${componentPattern}"
+        if (-not $result.resumedActivityObserved) {
+            Start-Sleep -Milliseconds 500
+        }
+    }
     if (-not $result.resumedActivityObserved) {
         throw 'MainActivity was not observed as the resumed activity.'
     }

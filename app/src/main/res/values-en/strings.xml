@@ -13,4 +13,11 @@
     <string name="action_grant_status_notification">Allow status notification</string>
     <string name="inbox_empty_title">Waiting for the first real notification</string>
     <string name="inbox_empty_body">Committed notifications will appear here in time order.</string>
+    <string name="notification_listener_label">Oh My Notification! listener</string>
+    <string name="status_channel_name">Recording status</string>
+    <string name="status_channel_description">Shows notification listening and recording status quietly</string>
+    <string name="status_connected">Recording · %1$d saved</string>
+    <string name="status_disconnected">Listener disconnected · %1$d saved</string>
+    <string name="status_waiting">Waiting for the next notification</string>
+    <string name="status_detail_separator"> · </string>
 </resources>
