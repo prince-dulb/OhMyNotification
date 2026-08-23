@@ -76,9 +76,13 @@ $startInfo.FileName = $adbPath
 $startInfo.UseShellExecute = $false
 $startInfo.RedirectStandardOutput = $true
 $startInfo.RedirectStandardError = $true
-foreach ($argument in @('-s', $Serial, 'exec-out', 'run-as', $packageName, 'cat', $remoteRelativePath)) {
-    $null = $startInfo.ArgumentList.Add($argument)
+$processArguments = @('-s', $Serial, 'exec-out', 'run-as', $packageName, 'cat', $remoteRelativePath)
+if ($processArguments | Where-Object { $_ -notmatch '^[A-Za-z0-9._/\\:-]+$' }) {
+    throw 'An adb argument contains unsupported characters.'
 }
+# Windows PowerShell 5.1 runs on .NET Framework, where ProcessStartInfo.ArgumentList
+# does not exist. Every argument above is validated as an unquoted adb token.
+$startInfo.Arguments = $processArguments -join ' '
 $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
 $memoryStream = [System.IO.MemoryStream]::new()
