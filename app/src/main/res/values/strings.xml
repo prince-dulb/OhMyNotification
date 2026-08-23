@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">救救我的通知！</string>
+    <string name="phase_zero_eyebrow">PHASE 0</string>
+    <string name="phase_zero_title">工程基线已就绪</string>
+    <string name="phase_zero_body">这是技术验证壳。通知监听、常驻状态与本地存储尚未启用。</string>
+    <string name="phase_zero_status_label">当前阶段</string>
+    <string name="phase_zero_status_value">验证致命技术假设</string>
+</resources>

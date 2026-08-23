@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Oh My Notification!</string>
+    <string name="phase_zero_eyebrow">PHASE 0</string>
+    <string name="phase_zero_title">Project baseline ready</string>
+    <string name="phase_zero_body">This is a technical validation shell. Notification capture, persistent status, and local storage are not enabled yet.</string>
+    <string name="phase_zero_status_label">Current stage</string>
+    <string name="phase_zero_status_value">Validating critical assumptions</string>
+</resources>

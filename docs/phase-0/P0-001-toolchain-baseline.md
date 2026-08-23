@@ -21,7 +21,7 @@
 | SDK Build Tools | `35.0.0`、`36.1.0`、`37.0.0` | 采用已安装的 `36.1.0`，不下载预览工具 |
 | Platform Tools / ADB | `37.0.0` / ADB `1.0.41` | 可执行；设备连接留到真机任务验证 |
 | Emulator | `36.5.11`，没有系统镜像 | 不阻断；本项目以红魔真机为首要证据，不为 Phase 0 强装镜像 |
-| NDK | 未安装 | 不阻断；v0 保持纯 Kotlin/Java/AndroidX，不引入原生库 |
+| NDK | 未安装 | 不阻断；项目不应用 NDK/C++ 插件，也不编译本地源码。P0-003 已发现 Compose/AndroidX 会传递打包预编译 `libandroidx.graphics.path.so`，因此后续按实际 APK 审计 ABI，不能把“未安装 NDK”误写成“APK 绝无原生库” |
 | SDK Command-line Tools | 未安装 | 当前已有目标 SDK 与构建工具，P0-003 不依赖 `sdkmanager`；需要变更 SDK 时进入 G1 |
 | 已缓存 Gradle | `8.12` 可由 Studio JBR 21 正常启动 | 仅用于生成项目 Wrapper，不作为最终构建版本 |
 | 已缓存 Android 依赖 | AGP `8.9.1`、KGP/Compose Compiler `2.1.0`、Compose BOM `2025.05.00` 等 | 版本过旧，不拿缓存偶然状态冒充当前基线 |

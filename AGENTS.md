@@ -48,6 +48,7 @@
 - `.gradle/`、`.kotlin/`、`.idea/`、所有 `build/`、设备捕获和性能原始输出均为本地生成物，不得提交。
 - 构建版本使用固定值，不使用 `+`、`latest`、浮动范围或未经校验的预览版。
 - Phase 0 默认使用项目 Wrapper 和进程级环境变量，不修改用户或系统级 `PATH`、`JAVA_HOME`、`ANDROID_HOME`。
+- 当前正式工作区目录名含中文。P0-003 已在该真实路径完成 Kotlin 编译、Lint、Debug 与 Release 构建后，允许项目固定 `android.overridePathCheck=true`，仅关闭 AGP 的非 ASCII 路径预判；任何后续真实编译、资源或工具错误仍须按根因处理，不得用该选项放行。若实测出现 Unicode 路径故障，先取得用户授权再迁移目录。
 - v0 保持单 `:app` 模块；出现第二个真实复用边界前，不新增通用宿主、基础设施模块或独立后台进程模块。
 
 ## 命名与写作
