@@ -118,7 +118,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
                     runtimeSessionId = graph.runtimeSessionId,
                     listenerConnectionId = work.connectionId,
                 )
-                graph.statusNotificationController.onConnectionChanged(
+                graph.statusNotificationController.onListenerConnectionChanged(
                     isConnected = true,
                     currentRecordCount = graph.repository.currentItemCount(),
                     latestItem = graph.repository.latestItem(),
@@ -150,7 +150,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
                     runtimeSessionId = graph.runtimeSessionId,
                     listenerConnectionId = work.connectionId,
                 )
-                graph.statusNotificationController.onConnectionChanged(isConnected = false)
+                graph.statusNotificationController.onListenerConnectionChanged(isConnected = false)
             }
         }
     }

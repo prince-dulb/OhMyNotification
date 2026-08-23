@@ -33,8 +33,7 @@ class MainActivity : ComponentActivity() {
         if (granted) {
             val graph = (application as OmnApplication).graph
             graph.serialScope.launch {
-                graph.statusNotificationController.onConnectionChanged(
-                    isConnected = ListenerRuntimeState.isConnected(),
+                graph.statusNotificationController.onExternalStateChanged(
                     currentRecordCount = graph.repository.currentItemCount(),
                     latestItem = graph.repository.latestItem(),
                 )
@@ -95,6 +94,12 @@ class MainActivity : ComponentActivity() {
                 graph.statusNotificationController.isChannelEnabled(),
         )
         graph.serialScope.launch { graph.recordCurrentHealthFacets() }
+        graph.serialScope.launch {
+            graph.statusNotificationController.onExternalStateChanged(
+                currentRecordCount = graph.repository.currentItemCount(),
+                latestItem = graph.repository.latestItem(),
+            )
+        }
     }
 
     private fun openNotificationAccessSettings() {

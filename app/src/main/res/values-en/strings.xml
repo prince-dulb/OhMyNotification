@@ -18,8 +18,12 @@
     <string name="status_channel_description">Shows notification listening and recording status quietly</string>
     <string name="status_title_connected">Rescuing notifications</string>
     <string name="status_title_disconnected">Rescue interrupted — tap to check</string>
+    <string name="status_title_waiting_for_connection">Waiting for the system listener</string>
+    <string name="status_title_access_required">Notification access required</string>
     <string name="status_connected">%1$d rescued</string>
     <string name="status_disconnected">Listener disconnected · %1$d saved</string>
+    <string name="status_waiting_for_connection">No connection evidence in this run yet</string>
+    <string name="status_access_required">Tap to check and open system settings</string>
     <string name="status_public_recent_source">Latest source: %1$s</string>
     <string name="status_waiting">Waiting for the next notification</string>
     <string name="status_detail_separator"> · </string>

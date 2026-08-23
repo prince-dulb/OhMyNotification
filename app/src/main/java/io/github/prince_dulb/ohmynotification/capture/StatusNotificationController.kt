@@ -12,6 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import io.github.prince_dulb.ohmynotification.MainActivity
 import io.github.prince_dulb.ohmynotification.R
+import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationDeriver
+import io.github.prince_dulb.ohmynotification.core.health.StatusPresentationState
 import io.github.prince_dulb.ohmynotification.data.NotificationCommit
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 
@@ -19,10 +21,12 @@ class StatusNotificationController(private val context: Context) {
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
     private var connected = false
+    private var connectionObserved = false
     private var recordCount = 0L
     private var latestSource: String? = null
     private var latestTitle: String? = null
     private var latestEventTimeEpochMillis: Long? = null
+    private var lastPublishedSignature: StatusSignature? = null
     private val publishRunnable = Runnable(::publishNow)
 
     init {
@@ -41,19 +45,33 @@ class StatusNotificationController(private val context: Context) {
     }
 
     @Synchronized
-    fun onConnectionChanged(
+    fun onListenerConnectionChanged(
         isConnected: Boolean,
         currentRecordCount: Long? = null,
         latestItem: NotificationItemEntity? = null,
     ) {
+        connectionObserved = true
         connected = isConnected
+        updateSnapshot(currentRecordCount, latestItem)
+        schedule(immediate = true)
+    }
+
+    @Synchronized
+    fun onExternalStateChanged(
+        currentRecordCount: Long? = null,
+        latestItem: NotificationItemEntity? = null,
+    ) {
+        updateSnapshot(currentRecordCount, latestItem)
+        schedule(immediate = true)
+    }
+
+    private fun updateSnapshot(currentRecordCount: Long?, latestItem: NotificationItemEntity?) {
         if (currentRecordCount != null) recordCount = currentRecordCount
         if (latestItem != null) {
             latestSource = latestItem.sourceLabelSnapshot ?: latestItem.sourcePackage
             latestTitle = latestItem.title
             latestEventTimeEpochMillis = latestItem.firstReceivedAtEpochMillis
         }
-        schedule(immediate = true)
     }
 
     fun isChannelEnabled(): Boolean =
@@ -82,25 +100,56 @@ class StatusNotificationController(private val context: Context) {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
+            lastPublishedSignature = null
             return
         }
-        val summaryText = if (connected) {
-            context.getString(R.string.status_connected, recordCount)
-        } else {
-            context.getString(R.string.status_disconnected, recordCount)
+        if (!isChannelEnabled()) {
+            lastPublishedSignature = null
+            return
         }
+        val listenerAccessGranted = notificationManager.isNotificationListenerAccessGranted(
+            OmnNotificationListenerComponent.componentName(context),
+        )
+        val presentation = StatusPresentationDeriver.derive(
+            listenerAccessGranted = listenerAccessGranted,
+            connectionObserved = connectionObserved,
+            listenerConnected = connected,
+        )
         val source = latestSource
-        val privateTitle = if (connected) {
-            context.getString(R.string.status_title_connected)
-        } else {
-            context.getString(R.string.status_title_disconnected)
+        val privateTitle = when (presentation) {
+            StatusPresentationState.LISTENING -> context.getString(R.string.status_title_connected)
+            StatusPresentationState.WAITING_FOR_CONNECTION ->
+                context.getString(R.string.status_title_waiting_for_connection)
+            StatusPresentationState.LISTENER_INTERRUPTED ->
+                context.getString(R.string.status_title_disconnected)
+            StatusPresentationState.ACCESS_REQUIRED -> context.getString(R.string.status_title_access_required)
         }
-        val privateDetail = listOfNotNull(summaryText, source, latestTitle)
-            .joinToString(context.getString(R.string.status_detail_separator))
-            .ifBlank { context.getString(R.string.status_waiting) }
-        val publicDetail = source?.let { recentSource ->
-            context.getString(R.string.status_public_recent_source, recentSource)
-        } ?: summaryText
+        val summaryText = when (presentation) {
+            StatusPresentationState.LISTENING -> context.getString(R.string.status_connected, recordCount)
+            StatusPresentationState.WAITING_FOR_CONNECTION -> context.getString(R.string.status_waiting_for_connection)
+            StatusPresentationState.LISTENER_INTERRUPTED ->
+                context.getString(R.string.status_disconnected, recordCount)
+            StatusPresentationState.ACCESS_REQUIRED -> context.getString(R.string.status_access_required)
+        }
+        val privateDetail = if (presentation == StatusPresentationState.LISTENING) {
+            listOfNotNull(summaryText, source, latestTitle)
+                .joinToString(context.getString(R.string.status_detail_separator))
+        } else {
+            summaryText
+        }
+        val publicDetail = if (presentation == StatusPresentationState.LISTENING && source != null) {
+            context.getString(R.string.status_public_recent_source, source)
+        } else {
+            summaryText
+        }
+        val signature = StatusSignature(
+            presentation = presentation,
+            recordCount = recordCount,
+            latestSource = source,
+            latestTitle = latestTitle,
+            latestEventTimeEpochMillis = latestEventTimeEpochMillis,
+        )
+        if (signature == lastPublishedSignature) return
         val publicVersion = baseBuilder()
             .setContentTitle(privateTitle)
             .setContentText(publicDetail)
@@ -113,7 +162,8 @@ class StatusNotificationController(private val context: Context) {
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
             .build()
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        runCatching { notificationManager.notify(NOTIFICATION_ID, notification) }
+            .onSuccess { lastPublishedSignature = signature }
     }
 
     private fun baseBuilder(): Notification.Builder = Notification.Builder(context, CHANNEL_ID)
@@ -141,4 +191,12 @@ class StatusNotificationController(private val context: Context) {
         const val NOTIFICATION_ID = 0x0D4E
         const val UPDATE_DEBOUNCE_MILLIS = 750L
     }
+
+    private data class StatusSignature(
+        val presentation: StatusPresentationState,
+        val recordCount: Long,
+        val latestSource: String?,
+        val latestTitle: String?,
+        val latestEventTimeEpochMillis: Long?,
+    )
 }
