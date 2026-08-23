@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
                 OmnAppScreen(
                     state = uiState.value,
                     repository = (application as OmnApplication).graph.repository,
+                    currentRuntimeSessionId = (application as OmnApplication).graph.runtimeSessionId,
+                    currentListenerConnectionId = ListenerRuntimeState.connectionId(),
                     loadLaunchableSources =
                         (application as OmnApplication).graph.sourceLabelResolver::launchableSources,
                     onOpenNotificationAccess = ::openNotificationAccessSettings,

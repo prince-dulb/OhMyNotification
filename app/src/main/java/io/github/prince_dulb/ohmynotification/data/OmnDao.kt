@@ -85,6 +85,12 @@ interface OmnDao {
         """
         SELECT * FROM health_evidence
         WHERE occurredAtEpochMillis >= :startEpochMillis
+           OR evidenceId IN (
+               SELECT evidenceId FROM health_evidence
+               WHERE occurredAtEpochMillis < :startEpochMillis
+               ORDER BY occurredAtEpochMillis DESC, evidenceId DESC
+               LIMIT 32
+           )
         ORDER BY occurredAtEpochMillis ASC, evidenceId ASC
         """,
     )

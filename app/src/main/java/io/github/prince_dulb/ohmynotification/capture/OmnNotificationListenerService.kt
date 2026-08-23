@@ -27,7 +27,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
         super.onListenerConnected()
         val connectionId = UUID.randomUUID().toString()
         listenerConnectionId = connectionId
-        ListenerRuntimeState.setConnected(true)
+        ListenerRuntimeState.setConnected(true, connectionId)
         enqueue(ListenerWork.Connected(connectionId, System.currentTimeMillis()))
 
         runCatching { activeNotifications?.toList().orEmpty() }

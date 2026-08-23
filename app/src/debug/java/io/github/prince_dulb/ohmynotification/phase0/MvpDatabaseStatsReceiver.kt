@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import io.github.prince_dulb.ohmynotification.data.OmnDatabase
+import io.github.prince_dulb.ohmynotification.OmnApplication
+import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,8 +35,11 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
 
     private fun readStats(context: Context): JSONObject {
         val database = OmnDatabase.get(context).openHelper.readableDatabase
+        val graph = (context.applicationContext as OmnApplication).graph
         return JSONObject()
             .put("status", "OK")
+            .put("listenerConnected", ListenerRuntimeState.isConnected())
+            .put("runtimeActionHandleCount", graph.runtimeActionStore.size())
             .put("notificationItemCount", database.scalar("SELECT COUNT(*) FROM notification_items"))
             .put(
                 "duplicateIdentityGenerationGroups",

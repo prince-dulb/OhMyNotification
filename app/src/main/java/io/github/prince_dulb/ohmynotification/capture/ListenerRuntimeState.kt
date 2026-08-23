@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 object OmnNotificationListenerComponent {
     const val CLASS_NAME =
@@ -14,11 +15,15 @@ object OmnNotificationListenerComponent {
 
 object ListenerRuntimeState {
     private val connected = AtomicBoolean(false)
+    private val connectionId = AtomicReference<String?>(null)
     private val listeners = CopyOnWriteArraySet<(Boolean) -> Unit>()
 
     fun isConnected(): Boolean = connected.get()
 
-    fun setConnected(value: Boolean) {
+    fun connectionId(): String? = connectionId.get()
+
+    fun setConnected(value: Boolean, currentConnectionId: String? = null) {
+        connectionId.set(if (value) currentConnectionId else null)
         if (connected.getAndSet(value) != value) {
             listeners.forEach { listener -> listener(value) }
         }

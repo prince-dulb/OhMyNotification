@@ -68,10 +68,14 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import io.github.prince_dulb.ohmynotification.R
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
 import io.github.prince_dulb.ohmynotification.capture.LaunchableSource
-import io.github.prince_dulb.ohmynotification.data.HealthEvidenceEntity
+import io.github.prince_dulb.ohmynotification.core.health.HealthFact
+import io.github.prince_dulb.ohmynotification.core.health.HealthTimelineDeriver
+import io.github.prince_dulb.ohmynotification.core.health.HealthTimelineQuery
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
 import io.github.prince_dulb.ohmynotification.data.SourceSummaryRow
+import io.github.prince_dulb.ohmynotification.core.timeline.TimelineGrouper
+import io.github.prince_dulb.ohmynotification.core.timeline.TimelineGroupingCandidate
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -91,6 +95,8 @@ data class AppUiState(
 internal fun OmnAppScreen(
     state: AppUiState,
     repository: NotificationRepository,
+    currentRuntimeSessionId: String,
+    currentListenerConnectionId: String?,
     loadLaunchableSources: () -> List<LaunchableSource>,
     onOpenNotificationAccess: () -> Unit,
     onRequestStatusNotification: () -> Unit,
@@ -133,12 +139,37 @@ internal fun OmnAppScreen(
     val healthEvidence by remember(healthStart) {
         repository.healthEvidenceSince(healthStart)
     }.collectAsStateWithLifecycle(emptyList())
-    val firstConnectionByItem = remember(healthEvidence) {
-        healthEvidence
-            .asSequence()
-            .filter { evidence -> evidence.itemId != null && evidence.listenerConnectionId != null }
-            .groupBy(HealthEvidenceEntity::itemId)
-            .mapValues { (_, evidence) -> evidence.first().listenerConnectionId }
+    val observedNow = remember(loadedItems, healthEvidence, currentListenerConnectionId) {
+        System.currentTimeMillis()
+    }
+    val healthIntervals = remember(
+        healthStart,
+        observedNow,
+        healthEvidence,
+        currentRuntimeSessionId,
+        currentListenerConnectionId,
+    ) {
+        if (healthStart == Long.MAX_VALUE) {
+            emptyList()
+        } else {
+            HealthTimelineDeriver.derive(
+                facts = healthEvidence.map { evidence ->
+                    HealthFact(
+                        evidenceId = evidence.evidenceId,
+                        kind = evidence.kind,
+                        occurredAtEpochMillis = evidence.occurredAtEpochMillis,
+                        runtimeSessionId = evidence.runtimeSessionId,
+                        listenerConnectionId = evidence.listenerConnectionId,
+                    )
+                },
+                query = HealthTimelineQuery(
+                    rangeStartEpochMillis = healthStart,
+                    rangeEndEpochMillis = maxOf(observedNow, healthStart + 1L),
+                    currentRuntimeSessionId = currentRuntimeSessionId,
+                    currentListenerConnectionId = currentListenerConnectionId,
+                ),
+            )
+        }
     }
     val listState = rememberLazyListState()
 
@@ -178,10 +209,15 @@ internal fun OmnAppScreen(
 
                 itemsIndexed(nodes, key = { _, node -> node.key }) { index, node ->
                     val next = nodes.getOrNull(index + 1)
-                    val anchorConnection = firstConnectionByItem[node.anchor.itemId]
-                    val nextConnection = next?.let { firstConnectionByItem[it.anchor.itemId] }
-                    val confirmedToNext = next == null ||
-                        anchorConnection != null && anchorConnection == nextConnection
+                    val confirmedToNext = if (next == null) {
+                        true
+                    } else {
+                        HealthTimelineDeriver.isFullyConfirmed(
+                            intervals = healthIntervals,
+                            startEpochMillis = next.anchor.firstReceivedAtEpochMillis,
+                            endEpochMillis = node.anchor.firstReceivedAtEpochMillis,
+                        )
+                    }
                     TimelineNodeCard(
                         node = node,
                         confirmedToNext = confirmedToNext,
@@ -323,6 +359,11 @@ private fun InboxHeader(
                 Text("不监控")
             }
         }
+        Text(
+            text = "蓝色实线：已确认运行　黄色虚线：未确认运行",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
     }
 }
 
@@ -664,35 +705,18 @@ private data class SourceChoice(
 )
 
 private fun groupTimeline(items: List<NotificationItemEntity>): List<TimelineNode> {
-    val consumed = BooleanArray(items.size)
-    val nodes = arrayListOf<TimelineNode>()
-    items.indices.forEach { anchorIndex ->
-        if (consumed[anchorIndex]) return@forEach
-        val anchor = items[anchorIndex]
-        val memberIndexes = arrayListOf(anchorIndex)
-        var otherApps = 0
-        var scan = anchorIndex + 1
-        while (scan < items.size) {
-            val candidate = items[scan]
-            if (anchor.sortTimeEpochMillis - candidate.sortTimeEpochMillis > GROUP_WINDOW_MILLIS) break
-            if (candidate.sourcePackage == anchor.sourcePackage &&
-                candidate.sourceUserRef == anchor.sourceUserRef
-            ) {
-                if (!consumed[scan]) memberIndexes += scan
-            } else {
-                if (otherApps == MAX_INTERVENING_OTHER_ITEMS) break
-                otherApps += 1
-            }
-            scan += 1
-        }
-        if (memberIndexes.size > 1) {
-            memberIndexes.forEach { memberIndex -> consumed[memberIndex] = true }
-        } else {
-            consumed[anchorIndex] = true
-        }
-        nodes += TimelineNode(memberIndexes.map(items::get))
+    val byId = items.associateBy(NotificationItemEntity::itemId)
+    val candidates = items.map { item ->
+        TimelineGroupingCandidate(
+            itemId = item.itemId,
+            sourcePackage = item.sourcePackage,
+            sourceUserRef = item.sourceUserRef,
+            firstReceivedAtEpochMillis = item.firstReceivedAtEpochMillis,
+        )
     }
-    return nodes
+    return TimelineGrouper.group(candidates).map { group ->
+        TimelineNode(group.memberItemIds.map { itemId -> requireNotNull(byId[itemId]) })
+    }
 }
 
 private fun NotificationItemEntity.sourceName(): String = sourceLabelSnapshot ?: sourcePackage
@@ -729,7 +753,6 @@ private object SourceIconCache {
 }
 
 private val TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
-private const val GROUP_WINDOW_MILLIS = 15L * 60L * 1_000L
-private const val MAX_INTERVENING_OTHER_ITEMS = 3
+private const val GROUP_WINDOW_MILLIS = TimelineGrouper.WINDOW_MILLIS
 private val ConfirmedBlue = Color(0xFF1565C0)
 private val UnconfirmedYellow = Color(0xFFF9A825)
