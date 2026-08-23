@@ -1,6 +1,6 @@
 # Phase 0 APK 安装启动冒烟协议
 
-状态：`[待验证] READY / NOT_RUN`
+状态：`[已验证] PASS`
 
 ## 1. 目的
 
@@ -42,4 +42,16 @@
 
 ## 5. 当前结果
 
-验收脚本建立时授权设备数为 0，因此状态保持 `NOT_RUN`。只有设备实际连接并完成上述六项检查后，本文才能改为 `[已验证] PASS`。
+2026-08-23 12:29（UTC+08:00）在首要真机红魔 11 Pro+ 上完成验收：
+
+- 设备型号标识：`NX809J`；
+- Android API：36；
+- ABI：`arm64-v8a`；
+- APK：`OhMyNotification-0.0.0-phase0-debug.apk`；
+- SHA-256：`3f20e8a09f94f6517a0312efaaaa29cbb044090da8ac30d748f5ce250143c60f`；
+- 安装、启动、进程观察和 resumed activity 四项结果均为 `true`；
+- 总结果：`PASS`。
+
+原始去标识证据保存在本机 `.local-evidence/phase-0/P0-APK-smoke-20260823T122905+0800.json`，不进入 Git。
+
+本结果只确认 Phase 0 工程壳能够实际安装并运行；通知监听等产品功能仍未实现，也未因此获得验证。

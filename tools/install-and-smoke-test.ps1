@@ -158,7 +158,8 @@ try {
 
     $launchOutput = Invoke-Adb -Arguments @('shell', 'am', 'start', '-W', '-S', '-n', $componentName)
     $launchText = $launchOutput -join [Environment]::NewLine
-    if ($launchText -notmatch '(?m)^Status:\s+ok$' -or $launchText -notmatch [regex]::Escape($componentName)) {
+    $launchStatusOk = @($launchOutput | Where-Object { $_.Trim() -eq 'Status: ok' }).Count -gt 0
+    if (-not $launchStatusOk -or $launchText -notmatch [regex]::Escape($componentName)) {
         throw 'Activity Manager did not report a successful launch of MainActivity.'
     }
     $result.launchSucceeded = $true
