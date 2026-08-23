@@ -1,6 +1,6 @@
 # P0-005 本地证据与敏感扫描
 
-状态：`[候选] IMPLEMENTED / NOT_VERIFIED`
+状态：`[已验证] GO`
 
 ## 1. 目的
 
@@ -43,3 +43,16 @@ P0-005 只有在以下条件同时满足后才能改为 `GO`：
 4. 在已授权红魔上成功生成一份带 commit、设备摘要和 APK 摘要的私有 `SP-01` 模板；
 5. 验证 JSON 不包含原始设备序列号或本机绝对路径；
 6. Git 状态证明 `.local-evidence/` 仍被忽略。
+
+## 5. 验证结果
+
+2026-08-23 12:40（UTC+08:00）完成全部六项检查：
+
+- 两个 PowerShell 入口均通过语法解析；
+- 扫描器 8 条内容规则的内存自测通过；
+- 77 个公开候选文件中 74 个文本文件扫描通过，零命中；
+- 私有模板 `SP-01-20260823T124028+0800.json` 关联干净 commit `ea458299e4c2`、红魔型号标识 `NX809J`、API 36、`arm64-v8a` 和 Phase 0 APK SHA-256；
+- 模板检查结果为 `HasAbsoluteWindowsPath=False`、`HasRawSerialField=False`；
+- `git check-ignore` 明确命中 `.gitignore` 的 `.local-evidence/` 规则，私有模板及哨兵文件未进入公开候选树。
+
+结论：`P0-005 = GO`。扫描规则属于防误提交门禁，不替代真实通知实验后的哨兵登记和人工去敏复核。

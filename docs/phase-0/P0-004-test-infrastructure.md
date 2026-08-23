@@ -15,8 +15,8 @@
 | T0 | 固定数据校验、PowerShell 语法检查、production/test APK 内容与权限扫描 | 已通过 |
 | T1 | `notification-fields-v1` 的 SHA-256、隐私哨兵和固定种子派生 ID 契约，共 2 项 JVM 测试 | 2/2 通过 |
 | T2 | 尚无 Room schema 或持久化测试 | `NOT_APPLICABLE`；等待 G3 |
-| T3 | AndroidX Runner 测试 APK 可编译，包含发布—更新—移除契约及受控内部落页 | 构建通过；设备运行 `NOT_RUN` |
-| T4 | `invoke-controlled-notification.ps1` 可选择合成 case 并执行发布、更新、移除或完整契约 | 命令已建立；红魔运行 `NOT_RUN` |
+| T3 | AndroidX Runner 测试 APK 可编译，包含发布—更新—移除契约及受控内部落页 | 构建通过；首次设备运行 `FAIL`，修复中 |
+| T4 | `invoke-controlled-notification.ps1` 可选择合成 case 并执行发布、更新、移除或完整契约 | 命令已建立；同受控源缺陷，尚未通过红魔验证 |
 
 测试 APK 使用 `io.github.prince_dulb.ohmynotification.test`，不增加第二个产品模块。固定测试依赖为 JUnit `4.13.2`、AndroidX Test Runner `1.7.0` 和 Ext JUnit `1.3.0`；AndroidX 版本依据为验收日核对的[官方稳定版清单](https://developer.android.com/jetpack/androidx/releases/test)。
 
@@ -74,7 +74,9 @@
 
 `P0-004 = GO`：桌面侧测试基础设施、数据基线、测试 APK 隔离和构建命令成立，可以进入 P0-005。
 
-验收时没有授权 Android 设备连接，因此以下内容保持 `NOT_RUN`：
+初次验收时没有授权 Android 设备连接。2026-08-23 补跑 `connectedDebugAndroidTest` 后，发现 instrumentation 代码虽取得测试 APK 的 `Context`，实际仍以产品进程 UID 调用通知服务，Android 16 因调用 UID 与通知包名不一致抛出 `SecurityException`。该结果已把受控通知源的设备状态从 `NOT_RUN` 更新为 `FAIL`，替代测试入口在通过前不恢复为 GO。
+
+以下内容仍未通过：
 
 - `connectedDebugAndroidTest`；
 - 受控通知在 Android 16 上的实际发布、更新、移除与落页；
