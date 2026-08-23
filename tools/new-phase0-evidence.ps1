@@ -112,7 +112,7 @@ function Invoke-Adb {
 }
 
 $commit = (Invoke-Git -Arguments @('rev-parse', 'HEAD') | Select-Object -First 1).Trim()
-$workingTreeDirty = (Invoke-Git -Arguments @('status', '--porcelain')).Count -gt 0
+$workingTreeDirty = @(Invoke-Git -Arguments @('status', '--porcelain')).Count -gt 0
 $now = [DateTimeOffset]::Now
 $timestamp = $now.ToString("yyyyMMdd'T'HHmmsszzz").Replace(':', '')
 $runId = "$SpikeId-$timestamp"
