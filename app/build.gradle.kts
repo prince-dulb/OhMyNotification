@@ -7,6 +7,7 @@ plugins {
 
 android {
     namespace = "io.github.prince_dulb.ohmynotification"
+    testNamespace = "io.github.prince_dulb.ohmynotification.test"
 
     compileSdk {
         version = release(36) {
@@ -20,6 +21,8 @@ android {
         applicationId = "io.github.prince_dulb.ohmynotification"
         minSdk = 36
         targetSdk = 36
+        testApplicationId = "io.github.prince_dulb.ohmynotification.test"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 1
         versionName = "0.0.0-phase0"
     }
@@ -42,6 +45,11 @@ android {
     buildFeatures {
         buildConfig = false
         compose = true
+    }
+
+    sourceSets {
+        getByName("test").resources.directories += rootProject.file("testdata").absolutePath
+        getByName("androidTest").assets.directories += rootProject.file("testdata").absolutePath
     }
 
     packaging {
@@ -68,4 +76,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

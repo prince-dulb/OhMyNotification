@@ -19,6 +19,10 @@ captures/
 .local-evidence/
 .tmp/
 
+# Local delivery artifacts; public releases require explicit approval
+artifacts/*.apk
+artifacts/*.sha256
+
 # Signing and secrets
 *.jks
 *.keystore

@@ -1,0 +1,80 @@
+{
+  "datasetId": "notification-fields-v1",
+  "schemaVersion": 1,
+  "seed": 2026082301,
+  "generationRule": "syntheticId = first12hex(sha256(datasetId:seed:caseId))",
+  "cases": [
+    {
+      "caseId": "missing-title",
+      "syntheticId": "87aed4ba6f01",
+      "sourcePackage": "dev.omn.synthetic.alpha",
+      "postedAtEpochMillis": 1767225600000,
+      "title": null,
+      "text": "OMN_SYNTHETIC_BODY_ONLY",
+      "styleHint": "none",
+      "action": "none",
+      "expected": "accept_missing_title"
+    },
+    {
+      "caseId": "missing-text",
+      "syntheticId": "3213617df6ec",
+      "sourcePackage": "dev.omn.synthetic.alpha",
+      "postedAtEpochMillis": 1767225601000,
+      "title": "OMN_SYNTHETIC_TITLE_ONLY",
+      "text": null,
+      "styleHint": "none",
+      "action": "none",
+      "expected": "accept_missing_text"
+    },
+    {
+      "caseId": "unicode",
+      "syntheticId": "d2e2e0aca3ca",
+      "sourcePackage": "dev.omn.synthetic.beta",
+      "postedAtEpochMillis": 1767225602000,
+      "title": "OMN_SYNTHETIC_通知📦—مرحبا",
+      "text": "line-1\nline-2\t終",
+      "styleHint": "big_text",
+      "action": "none",
+      "expected": "preserve_unicode_and_controls"
+    },
+    {
+      "caseId": "long-text",
+      "syntheticId": "ce232c46591c",
+      "sourcePackage": "dev.omn.synthetic.beta",
+      "postedAtEpochMillis": 1767225603000,
+      "title": "OMN_SYNTHETIC_LONG_TEXT",
+      "textGenerator": {
+        "character": "L",
+        "length": 4097
+      },
+      "styleHint": "big_text",
+      "action": "none",
+      "expected": "exercise_explicit_length_boundary"
+    },
+    {
+      "caseId": "invalid-time",
+      "syntheticId": "dedc6af33e29",
+      "sourcePackage": "dev.omn.synthetic.gamma",
+      "postedAtEpochMillis": -1,
+      "title": "OMN_SYNTHETIC_INVALID_TIME",
+      "text": "synthetic invalid timestamp",
+      "styleHint": "none",
+      "action": "none",
+      "expected": "classify_invalid_time_without_machine_clock"
+    },
+    {
+      "caseId": "action",
+      "syntheticId": "f9d9fa9ec799",
+      "sourcePackage": "dev.omn.synthetic.gamma",
+      "postedAtEpochMillis": 1767225605000,
+      "title": "OMN_SYNTHETIC_ACTION",
+      "text": "synthetic explicit action",
+      "styleHint": "none",
+      "action": {
+        "kind": "explicit_test_activity",
+        "targetToken": "OMN_SYNTHETIC_TARGET_001"
+      },
+      "expected": "retain_controlled_action_shape"
+    }
+  ]
+}

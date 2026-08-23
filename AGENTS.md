@@ -9,6 +9,7 @@
 ## 当前阶段
 
 - `plan-v1.0` 已于 2026-08-22 经用户确认，G0 通过，项目正式进入 Phase 0。
+- P0-001—P0-004 已完成本地实现与无设备验证；当前下一任务为 P0-005。P0-004 的 Android 测试 APK 已编译并建立设备命令，但因验收时没有授权设备连接，运行时结果保持 `NOT_RUN`，不得写成真机通过。
 - 当前按 `docs/开发计划书/任务拆分.md` 执行：先本地合并并标记已确认计划，再只读盘点现有工具；盘点完成后必须先更新本文件的目录与验证规则，才可创建 Android 验证工程。
 - Phase 0 只验证致命技术假设和资源边界，不把 Spike 代码冒充产品功能，也不提前创建未经 G3 批准的生产 Room schema。
 - GitHub 远端、push、CI、公开 release、全局安装和系统配置仍分别受 G1/G5 与用户红线约束；G0 不构成这些操作的授权。
@@ -32,11 +33,12 @@
 - `docs/开发计划书/`：详细开发计划总索引、路线图、架构、非功能需求、测试策略、任务拆分和计划变更记录。
 - `docs/开发计划书/specs/`：每个 `[A]`、`[B]` 功能各自的独立规格文件；文件名使用稳定的中文功能名，不使用版本号或完成状态后缀。
 - `docs/phase-0/`：可公开的 Phase 0 工具链基线、Spike 协议、去敏结果和决策矩阵；文件名以对应任务或 Spike ID 开头，例如 `P0-001-toolchain-baseline.md`。真实通知正文、系统动作令牌、本机绝对路径和未脱敏截图不得进入此目录。
-- `app/`：唯一 Android 应用模块。`src/main/` 只放可进入 release 的壳与实现，`src/debug/` 放不会进入 release 的 Phase 0 调试入口，`src/test/` 放 JVM 测试，`src/androidTest/` 放设备测试；不得另建平行的“临时应用”绕过正式构建。
+- `app/`：唯一 Android 应用模块。`src/main/` 只放可进入 release 的壳与实现，`src/debug/` 放不会进入 release 的 Phase 0 调试入口，`src/test/` 放 JVM 测试，`src/androidTest/` 生成独立测试 APK并承载可控通知源；不得另建平行的产品应用绕过正式构建。测试 APK 使用 `.test` 应用 ID 后缀，只能声明测试所需权限，不得拥有网络、账号或真实用户数据；其组件和标记必须通过 APK 扫描证明不在 production APK 中。
 - `gradle/`：Gradle Wrapper 与版本目录。Wrapper 脚本、JAR、校验后的固定分发 URL和 `libs.versions.toml` 可以跟踪；下载的分发包与用户级缓存不得复制入库。
 - `tools/`：项目内可复现的检查、去敏、夹具和测量脚本；脚本必须有单一入口、非零失败码和简短用法，不得要求全局安装才能运行。
+- `testdata/`：T1—T4 共用的版本化去隐私合成数据。每个数据集使用稳定 ID 目录，至少包含数据、版本、生成规则、固定种子、SHA-256、期望摘要和变更原因；输入或期望变化必须新建版本，禁止覆盖旧基线。该目录不得出现真实通知、真实包名、内容 ID、URI、账号或本机路径。
 - `.local-evidence/`：仅本机保存的原始 Phase 0 证据、设备输出和真实通知样本，必须被 Git 忽略；需要提交的结论先去敏，再人工写入 `docs/phase-0/`。该目录不自动清理，删除前仍需用户授权。
-- `artifacts/`：明确要求保留的 APK、报告等交付物；不得混放源码。
+- `artifacts/`：明确要求保留的本地交付物，不得混放源码。APK 使用 `OhMyNotification-<version>-<variant>.apk` 命名，同时生成同名 `.sha256`；二者默认不进入 Git，公开 release 仍需用户单独授权。
 - `.tmp/`：可再生成的临时文件；任务结束前清理，不提交版本库。
 - 项目根目录只放全项目级配置、入口文档和构建文件，不堆放调研附件或临时输出。
 
@@ -48,7 +50,7 @@
 - `.gradle/`、`.kotlin/`、`.idea/`、所有 `build/`、设备捕获和性能原始输出均为本地生成物，不得提交。
 - 构建版本使用固定值，不使用 `+`、`latest`、浮动范围或未经校验的预览版。
 - Phase 0 默认使用项目 Wrapper 和进程级环境变量，不修改用户或系统级 `PATH`、`JAVA_HOME`、`ANDROID_HOME`。
-- 当前正式工作区目录名含中文。P0-003 已在该真实路径完成 Kotlin 编译、Lint、Debug 与 Release 构建后，允许项目固定 `android.overridePathCheck=true`，仅关闭 AGP 的非 ASCII 路径预判；任何后续真实编译、资源或工具错误仍须按根因处理，不得用该选项放行。若实测出现 Unicode 路径故障，先取得用户授权再迁移目录。
+- 正式工作区必须保持 ASCII 路径。P0-003 曾在非 ASCII 路径完成编译、Lint、Debug 与 Release，但 P0-004 的 Gradle Test Executor 实测会破坏测试类路径并报 `ClassNotFoundException`；用户随后将工作区改为 ASCII 名称，标准 JVM 测试恢复通过。不得重新启用 `android.overridePathCheck` 或用目录联接掩盖该问题。
 - v0 保持单 `:app` 模块；出现第二个真实复用边界前，不新增通用宿主、基础设施模块或独立后台进程模块。
 
 ## 命名与写作
@@ -129,10 +131,15 @@
 
 - Wrapper/环境：`.\gradlew.bat --version`
 - JVM 测试：`.\gradlew.bat test`
+- 测试数据校验：`.\tools\verify-testdata.ps1`
+- instrumentation 测试 APK 编译：`.\gradlew.bat :app:assembleDebugAndroidTest`
+- Android 设备测试（有目标设备时）：`.\gradlew.bat connectedDebugAndroidTest`
 - Android 静态检查：`.\gradlew.bat lint`
 - 调试构建：`.\gradlew.bat :app:assembleDebug`
 - 本地未签名/默认签名发布构建检查：`.\gradlew.bat :app:assembleRelease`
-- 总门：`.\gradlew.bat test lint :app:assembleDebug :app:assembleRelease`
+- production/test APK 边界：`.\tools\verify-apk-boundary.ps1`
+- 可安装 Debug APK 校验：`.\tools\verify-installable-apk.ps1`
+- 无设备构建总门：`.\gradlew.bat test lint :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`
 
 真机命令、性能命令和 Spike 专用任务在建立后补入本节。真实设备输出先进入 `.local-evidence/`，去敏摘要再进入 Git。
 

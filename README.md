@@ -16,9 +16,15 @@
 ```powershell
 .\gradlew.bat --version
 .\gradlew.bat test
+.\tools\verify-testdata.ps1
 .\gradlew.bat lint
 .\gradlew.bat :app:assembleDebug
 .\gradlew.bat :app:assembleRelease
+.\gradlew.bat :app:assembleDebugAndroidTest
+.\tools\verify-apk-boundary.ps1
+.\tools\verify-installable-apk.ps1
 ```
+
+`artifacts/OhMyNotification-0.0.0-phase0-debug.apk` 是本地生成、带 Android Debug 签名的安装验证包；它不会进入 Git，也不是公开 release。该版本只验证原生 Android 壳能够安装和启动，尚不具备通知记录产品功能。
 
 详细需求、架构边界和阶段门见 [`docs/开发计划书/README.md`](docs/开发计划书/README.md)。
