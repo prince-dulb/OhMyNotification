@@ -7,16 +7,32 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
 import io.github.prince_dulb.ohmynotification.data.OmnDatabase
 import io.github.prince_dulb.ohmynotification.OmnApplication
 import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 class MvpDatabaseStatsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_SET_CONTROLLED_SOURCE_EXCLUSION) {
+            val graph = (context.applicationContext as OmnApplication).graph
+            runBlocking {
+                withContext(Dispatchers.IO) {
+                    graph.repository.setSourceExcluded(
+                        CONTROLLED_SOURCE_PACKAGE,
+                        intent.getBooleanExtra(EXTRA_EXCLUDED, false),
+                    )
+                }
+            }
+            resultCode = Activity.RESULT_OK
+            resultData = JSONObject().put("status", "OK").toString()
+            return
+        }
         if (intent.action == ACTION_CANCEL_STATUS_NOTIFICATION) {
             val graph = (context.applicationContext as OmnApplication).graph
             val notificationManager = context.getSystemService(NotificationManager::class.java)
@@ -66,6 +82,16 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
             .put(
                 "statusNotificationPublishedUpdateCount",
                 graph.statusNotificationController.publishedUpdateCount(),
+            )
+            .put(
+                "includedSourceFilterCount",
+                graph.inboxViewPreferencesStore.includedSourcePackages.value.size,
+            )
+            .put("excludedSourceCount", database.scalar("SELECT COUNT(*) FROM excluded_sources"))
+            .put("policyExcludedSourceCount", graph.policyStore.snapshot().userExcludedPackages.size)
+            .put(
+                "controlledSourceExcluded",
+                CONTROLLED_SOURCE_PACKAGE in graph.policyStore.snapshot().userExcludedPackages,
             )
             .put("runtimeActionHandleCount", graph.runtimeActionStore.size())
             .put("notificationItemCount", database.scalar("SELECT COUNT(*) FROM notification_items"))
@@ -131,6 +157,57 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
                     runtimeArgs,
                 ),
             )
+            .put("capturedFieldsChangedSincePreviousStats", capturedFieldChanges(database, runtimeArgs))
+    }
+
+    private fun capturedFieldChanges(
+        database: androidx.sqlite.db.SupportSQLiteDatabase,
+        runtimeArgs: Array<out Any?>,
+    ): JSONArray {
+        val current = database.query(
+            """
+            SELECT itemId, notificationId, tag, lifecycleGeneration,
+                   firstReceivedAtEpochMillis, sortTimeEpochMillis, originalPostTimeEpochMillis,
+                   title, body, sourceLabelSnapshot, contentFingerprint, normalizationWarnings,
+                   normalizationStrategyVersion, titleOriginalCodePoints, bodyOriginalCodePoints,
+                   hadContentIntent, contentIntentCreatorPackage, notificationActionCount,
+                   isRemoved, removedAtEpochMillis, lastRemovalReason
+            FROM notification_items
+            WHERE itemId = (
+                SELECT itemId FROM health_evidence
+                WHERE runtimeSessionId = ? AND kind = 'NOTIFICATION_COMMITTED'
+                ORDER BY evidenceId DESC
+                LIMIT 1
+            )
+            """.trimIndent(),
+            runtimeArgs,
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return JSONArray()
+            CapturedFieldSnapshot(
+                itemId = cursor.getLong(0),
+                fingerprints = CAPTURED_FIELD_NAMES.mapIndexed { index, name ->
+                    name to cursor.valueFingerprint(index + 1)
+                }.toMap(),
+            )
+        }
+        val previous = synchronized(CAPTURED_FIELD_SNAPSHOT_LOCK) {
+            lastCapturedFieldSnapshot.also { lastCapturedFieldSnapshot = current }
+        }
+        if (previous == null || previous.itemId != current.itemId) return JSONArray()
+        return JSONArray(
+            CAPTURED_FIELD_NAMES.filter { name ->
+                previous.fingerprints[name] != current.fingerprints[name]
+            },
+        )
+    }
+
+    private fun Cursor.valueFingerprint(index: Int): Int? = when (getType(index)) {
+        Cursor.FIELD_TYPE_NULL -> null
+        Cursor.FIELD_TYPE_INTEGER -> getLong(index).hashCode()
+        Cursor.FIELD_TYPE_FLOAT -> getDouble(index).hashCode()
+        Cursor.FIELD_TYPE_STRING -> getString(index).hashCode()
+        Cursor.FIELD_TYPE_BLOB -> getBlob(index).contentHashCode()
+        else -> null
     }
 
     private fun androidx.sqlite.db.SupportSQLiteDatabase.scalar(
@@ -142,9 +219,42 @@ class MvpDatabaseStatsReceiver : BroadcastReceiver() {
         }
 
     private companion object {
+        val CAPTURED_FIELD_SNAPSHOT_LOCK = Any()
+        val CAPTURED_FIELD_NAMES = listOf(
+            "notificationId",
+            "tag",
+            "lifecycleGeneration",
+            "firstReceivedAtEpochMillis",
+            "sortTimeEpochMillis",
+            "originalPostTimeEpochMillis",
+            "title",
+            "body",
+            "sourceLabelSnapshot",
+            "contentFingerprint",
+            "normalizationWarnings",
+            "normalizationStrategyVersion",
+            "titleOriginalCodePoints",
+            "bodyOriginalCodePoints",
+            "hadContentIntent",
+            "contentIntentCreatorPackage",
+            "notificationActionCount",
+            "isRemoved",
+            "removedAtEpochMillis",
+            "lastRemovalReason",
+        )
+        var lastCapturedFieldSnapshot: CapturedFieldSnapshot? = null
         const val ACTION_DATABASE_STATS =
             "io.github.prince_dulb.ohmynotification.debug.DATABASE_STATS"
         const val ACTION_CANCEL_STATUS_NOTIFICATION =
             "io.github.prince_dulb.ohmynotification.debug.CANCEL_STATUS_NOTIFICATION"
+        const val ACTION_SET_CONTROLLED_SOURCE_EXCLUSION =
+            "io.github.prince_dulb.ohmynotification.debug.SET_CONTROLLED_SOURCE_EXCLUSION"
+        const val EXTRA_EXCLUDED = "excluded"
+        const val CONTROLLED_SOURCE_PACKAGE = "io.github.prince_dulb.ohmynotification.test"
     }
+
+    private data class CapturedFieldSnapshot(
+        val itemId: Long,
+        val fingerprints: Map<String, Int?>,
+    )
 }

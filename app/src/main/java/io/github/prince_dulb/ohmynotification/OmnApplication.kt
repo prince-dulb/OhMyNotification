@@ -13,6 +13,7 @@ import io.github.prince_dulb.ohmynotification.core.normalize.HmacSha256Fingerpri
 import io.github.prince_dulb.ohmynotification.core.normalize.NormalizationLimits
 import io.github.prince_dulb.ohmynotification.core.normalize.NotificationNormalizer
 import io.github.prince_dulb.ohmynotification.data.InstallKeyProvider
+import io.github.prince_dulb.ohmynotification.data.InboxViewPreferencesStore
 import io.github.prince_dulb.ohmynotification.data.MonitoringPolicyStore
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
 import io.github.prince_dulb.ohmynotification.data.OmnDatabase
@@ -21,6 +22,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 class OmnApplication : Application() {
     lateinit var graph: OmnAppGraph
@@ -29,8 +32,10 @@ class OmnApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = OmnAppGraph(this)
+        runBlocking {
+            withContext(Dispatchers.IO) { graph.repository.reconcilePolicyFromDatabase() }
+        }
         graph.serialScope.launch {
-            graph.repository.reconcilePolicyFromDatabase()
             graph.repository.recordHealth(
                 kind = "PROCESS_STARTED",
                 occurredAtEpochMillis = System.currentTimeMillis(),
@@ -49,7 +54,8 @@ class OmnAppGraph(application: Application) {
     private var lastChannelKind: String? = null
     val runtimeSessionId: String = UUID.randomUUID().toString()
     val serialScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
-    val policyStore = MonitoringPolicyStore(application, application.packageName)
+    val policyStore = MonitoringPolicyStore(application.packageName)
+    val inboxViewPreferencesStore = InboxViewPreferencesStore(application)
     val runtimeActionStore = RuntimeActionStore()
     val sourceLabelResolver = SourceLabelResolver(application.packageManager, application.packageName)
     val statusNotificationController = StatusNotificationController(application)

@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -83,7 +84,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class AppUiState(
@@ -98,6 +101,7 @@ data class AppUiState(
 internal fun OmnAppScreen(
     state: AppUiState,
     repository: NotificationRepository,
+    includedSourcePackages: Flow<Set<String>>,
     currentRuntimeSessionId: String,
     currentListenerConnectionId: String?,
     loadLaunchableSources: () -> List<LaunchableSource>,
@@ -105,19 +109,21 @@ internal fun OmnAppScreen(
     onRequestStatusNotification: () -> Unit,
     onOpenStatusChannel: () -> Unit,
     onSetSourceExcluded: (String, Boolean) -> Unit,
+    onApplyIncludedSourcePackages: suspend (Set<String>) -> Boolean,
     onOpenNotification: (NotificationItemEntity) -> RuntimeActionStatus,
     onOpenSourceApp: (String) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val sources by repository.sourceSummaries.collectAsStateWithLifecycle(emptyList())
     val exclusions by repository.excludedSources.collectAsStateWithLifecycle(emptyList())
+    val selectedSources by includedSourcePackages.collectAsStateWithLifecycle(emptySet())
     val launchableSources by produceState(emptyList<LaunchableSource>()) {
         value = withContext(Dispatchers.IO) { loadLaunchableSources() }
     }
-    val sourceChoices = remember(sources, launchableSources) {
+    val sourceChoices = remember(sources, launchableSources, selectedSources) {
         val recorded = sources.associateBy(SourceSummaryRow::sourcePackage)
         val launchable = launchableSources.associateBy(LaunchableSource::sourcePackage)
-        (launchableSources.map { source -> source.sourcePackage } + recorded.keys)
+        (launchableSources.map { source -> source.sourcePackage } + recorded.keys + selectedSources)
             .distinct()
             .map { sourcePackage ->
                 val summary = recorded[sourcePackage]
@@ -130,10 +136,12 @@ internal fun OmnAppScreen(
             }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, SourceChoice::sourceLabel))
     }
-    var selectedSources by remember { mutableStateOf(emptySet<String>()) }
+    var filterDraft by remember { mutableStateOf(emptySet<String>()) }
+    var filterSaving by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
     val expandedDrawers = remember { mutableStateMapOf<Long, Boolean>() }
     val snackbar = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
     val pagingFlow = remember(selectedSources) { repository.pagedItems(selectedSources) }
     val pagingItems = pagingFlow.collectAsLazyPagingItems()
     val loadedItems = pagingItems.itemSnapshotList.items
@@ -198,7 +206,11 @@ internal fun OmnAppScreen(
                     InboxHeader(
                         state = state,
                         selectedCount = selectedSources.size,
-                        onOpenFilters = { dialog = SourceDialog.FILTER },
+                        onOpenFilters = {
+                            filterDraft = selectedSources
+                            filterSaving = false
+                            dialog = SourceDialog.FILTER
+                        },
                         onOpenExclusions = { dialog = SourceDialog.EXCLUDE },
                         onOpenNotificationAccess = onOpenNotificationAccess,
                         onRequestStatusNotification = onRequestStatusNotification,
@@ -271,15 +283,28 @@ internal fun OmnAppScreen(
         SourceDialog.FILTER -> SourceSelectionDialog(
             title = "只查看这些应用",
             sources = sourceChoices,
-            checkedPackages = selectedSources,
+            checkedPackages = filterDraft,
             emptyMeansAll = true,
             onToggle = { sourcePackage, checked ->
-                selectedSources = selectedSources.toMutableSet().apply {
+                filterDraft = filterDraft.toMutableSet().apply {
                     if (checked) add(sourcePackage) else remove(sourcePackage)
                 }
             },
-            onClear = { selectedSources = emptySet() },
-            onDismiss = { dialog = null },
+            onClear = { filterDraft = emptySet() },
+            confirmLabel = if (filterSaving) "保存中…" else "应用",
+            confirmEnabled = !filterSaving,
+            showCancel = true,
+            onConfirm = {
+                if (!filterSaving) {
+                    filterSaving = true
+                    coroutineScope.launch {
+                        val saved = onApplyIncludedSourcePackages(filterDraft)
+                        filterSaving = false
+                        if (saved) dialog = null else snackbar.showSnackbar("查看范围保存失败，仍使用原筛选")
+                    }
+                }
+            },
+            onDismiss = { if (!filterSaving) dialog = null },
         )
         SourceDialog.EXCLUDE -> SourceSelectionDialog(
             title = "不监控这些应用",
@@ -288,6 +313,7 @@ internal fun OmnAppScreen(
             emptyMeansAll = false,
             onToggle = onSetSourceExcluded,
             onClear = null,
+            onConfirm = { dialog = null },
             onDismiss = { dialog = null },
         )
         null -> Unit
@@ -668,6 +694,10 @@ private fun SourceSelectionDialog(
     emptyMeansAll: Boolean,
     onToggle: (String, Boolean) -> Unit,
     onClear: (() -> Unit)?,
+    confirmLabel: String = "完成",
+    confirmEnabled: Boolean = true,
+    showCancel: Boolean = false,
+    onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -704,9 +734,20 @@ private fun SourceSelectionDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
-        dismissButton = if (emptyMeansAll && onClear != null) {
-            { TextButton(onClick = onClear) { Text("查看全部") } }
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = confirmEnabled) { Text(confirmLabel) }
+        },
+        dismissButton = if ((emptyMeansAll && onClear != null) || showCancel) {
+            {
+                Row {
+                    if (emptyMeansAll && onClear != null) {
+                        TextButton(onClick = onClear, enabled = confirmEnabled) { Text("查看全部") }
+                    }
+                    if (showCancel) {
+                        TextButton(onClick = onDismiss, enabled = confirmEnabled) { Text("取消") }
+                    }
+                }
+            }
         } else {
             null
         },

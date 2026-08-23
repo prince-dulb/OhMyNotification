@@ -105,8 +105,9 @@ class NotificationRepository(
     }
 
     suspend fun setSourceExcluded(sourcePackage: String, excluded: Boolean) {
+        val alreadyExcluded = sourcePackage in policyStore.snapshot().userExcludedPackages
+        if (alreadyExcluded == excluded) return
         if (excluded) {
-            policyStore.setExcluded(sourcePackage, true)
             dao.insertExcludedSource(
                 ExcludedSourceEntity(sourcePackage, System.currentTimeMillis()),
             )
@@ -114,8 +115,8 @@ class NotificationRepository(
             dao.deleteExcludedSource(
                 ExcludedSourceEntity(sourcePackage, excludedAtEpochMillis = 0L),
             )
-            policyStore.setExcluded(sourcePackage, false)
         }
+        policyStore.setExcluded(sourcePackage, excluded)
     }
 
     fun sendRuntimeAction(item: NotificationItemEntity): RuntimeActionStatus =

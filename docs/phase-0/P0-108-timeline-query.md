@@ -73,3 +73,9 @@ sha256=59d4ac4c20f5173cbd962ad3746ee34fb3f11b1ae81091b1c2548f10302bef9c
 - 来源谓词与三元游标的实际索引及 `EXPLAIN QUERY PLAN`；
 - 数据失效后的 Paging generation 与页尾有限前瞻；
 - release 红魔 11 Pro+ 上的 10,000 条首屏、翻页、筛选、分组、PSS 和写盘预算。
+
+## 6. 生产候选接入进度
+
+经批准的 Room schema v1 落地后，生产候选已使用 Room `PagingSource` 在查询层执行全部/包名集合筛选，配置为 `pageSize=40`、`prefetchDistance=12`、`maxSize=200`；Compose 不先加载全表再过滤。最后应用的包名集合现保存在独立的应用私有 `SharedPreferences` 中，受全量数据提取排除规则保护，不写监控排除策略、不触发后台任务。筛选弹窗使用草稿，只有用户点击“应用”并成功持久化后才切换查询；取消不改变当前集合，空集合仍表示查看全部。
+
+目标设备上的定向 instrumentation 测试已完成“保存两个合成包名 → 新建仓储实例读取 → 恢复用户原值 → 再次新建实例核对”闭环，结果通过，最终 `includedSourceFilterCount=0`，没有留下测试筛选。当前生产查询仍只使用包名，没有实现 A12 完整的 `sourceUser + sourcePackage` 粒度；工作资料隔离、真实 UI 用户验收和 release 10,000 条预算仍保持未完成。
