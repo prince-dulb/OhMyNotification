@@ -34,6 +34,10 @@
 - `docs/开发计划书/specs/`：每个 `[A]`、`[B]` 功能各自的独立规格文件；文件名使用稳定的中文功能名，不使用版本号或完成状态后缀。
 - `docs/phase-0/`：可公开的 Phase 0 工具链基线、Spike 协议、去敏结果和决策矩阵；文件名以对应任务或 Spike ID 开头，例如 `P0-001-toolchain-baseline.md`。真实通知正文、系统动作令牌、本机绝对路径和未脱敏截图不得进入此目录。
 - `app/`：唯一 Android 应用模块。`src/main/` 只放可进入 release 的壳与实现，`src/debug/` 放不会进入 release 的 Phase 0 调试入口，`src/test/` 放 JVM 测试，`src/androidTest/` 生成独立测试 APK并承载可控通知源；不得另建平行的产品应用绕过正式构建。测试 APK 使用 `.test` 应用 ID 后缀，只能声明测试所需权限，不得拥有网络、账号或真实用户数据；其组件和标记必须通过 APK 扫描证明不在 production APK 中。
+- `app/src/main/java/.../core/`：不依赖 Android framework、Room 或 Compose 的领域类型与纯规则；`model/` 放不可变契约，`normalize/` 放归一化实现。Android `Notification`、`PendingIntent` 和 `StatusBarNotification` 不得进入此目录。
+- `app/src/main/java/.../capture/`：Android 通知监听、framework 快照复制、当前进程动作仓储和摄取协调；只通过纯数据投影进入领域/持久化边界，禁止在回调中直接操作 Compose。
+- `app/src/main/java/.../data/`：经 G3 明确批准后才可放 Room entity、DAO、数据库和 repository 实现；首次 schema 获批前目录不得创建。
+- `app/src/main/java/.../ui/`：Material 3 界面、展示模型与交互协调；不得持有 `StatusBarNotification`、`Notification` 或长期 `PendingIntent` 引用。
 - `gradle/`：Gradle Wrapper 与版本目录。Wrapper 脚本、JAR、校验后的固定分发 URL和 `libs.versions.toml` 可以跟踪；下载的分发包与用户级缓存不得复制入库。
 - `tools/`：项目内可复现的检查、去敏、夹具和测量脚本；脚本必须有单一入口、非零失败码和简短用法，不得要求全局安装才能运行。
 - `testdata/`：T1—T4 共用的版本化去隐私合成数据。每个数据集使用稳定 ID 目录，至少包含数据、版本、生成规则、固定种子、SHA-256、期望摘要和变更原因；输入或期望变化必须新建版本，禁止覆盖旧基线。该目录不得出现真实通知、真实包名、内容 ID、URI、账号或本机路径。
