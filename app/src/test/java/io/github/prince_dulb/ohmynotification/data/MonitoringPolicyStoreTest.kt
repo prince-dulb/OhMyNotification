@@ -1,5 +1,6 @@
 package io.github.prince_dulb.ohmynotification.data
 
+import io.github.prince_dulb.ohmynotification.core.model.NotificationType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,5 +29,13 @@ class MonitoringPolicyStoreTest {
         assertFalse(store.snapshot().excludes("example.alpha"))
         assertTrue(store.snapshot().excludes("example.self"))
         assertEquals(3L, store.snapshot().revision)
+
+        store.replaceRecordedNotificationTypes(setOf(NotificationType.OTHER))
+        assertTrue(store.snapshot().records(NotificationType.OTHER))
+        assertFalse(store.snapshot().records(NotificationType.MEDIA))
+        assertEquals(4L, store.snapshot().revision)
+
+        store.replaceRecordedNotificationTypes(setOf(NotificationType.OTHER))
+        assertEquals(4L, store.snapshot().revision)
     }
 }

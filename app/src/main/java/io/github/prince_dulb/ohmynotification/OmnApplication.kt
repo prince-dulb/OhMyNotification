@@ -14,6 +14,7 @@ import io.github.prince_dulb.ohmynotification.core.normalize.HmacSha256Fingerpri
 import io.github.prince_dulb.ohmynotification.core.normalize.NormalizationLimits
 import io.github.prince_dulb.ohmynotification.core.normalize.NotificationNormalizer
 import io.github.prince_dulb.ohmynotification.data.InstallKeyProvider
+import io.github.prince_dulb.ohmynotification.data.AppSettingsStore
 import io.github.prince_dulb.ohmynotification.data.InboxViewPreferencesStore
 import io.github.prince_dulb.ohmynotification.data.MonitoringPolicyStore
 import io.github.prince_dulb.ohmynotification.data.NotificationRepository
@@ -56,6 +57,7 @@ class OmnAppGraph(application: Application) {
     val runtimeSessionId: String = UUID.randomUUID().toString()
     val serialScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     val policyStore = MonitoringPolicyStore(application.packageName)
+    val appSettingsStore = AppSettingsStore(application, policyStore)
     val inboxViewPreferencesStore = InboxViewPreferencesStore(application)
     val runtimeActionStore = RuntimeActionStore()
     val sourceLabelResolver = SourceLabelResolver(application.packageManager, application.packageName)

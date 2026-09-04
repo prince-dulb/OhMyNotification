@@ -17,22 +17,26 @@ class InboxSourceFilterTest {
 
     @Test
     fun queryBindsExactUserAndPackagePairsInStableOrder() {
-        val query = buildPageItemsFromSourcesQuery(
-            setOf(
-                AppUserKey("work", "example.same"),
-                AppUserKey("personal", "example.other"),
-                AppUserKey("personal", "example.same"),
+        val query = buildPageItemsQuery(
+            viewFilter = InboxViewFilter(
+                includedSources = setOf(
+                    AppUserKey("work", "example.same"),
+                    AppUserKey("personal", "example.other"),
+                    AppUserKey("personal", "example.same"),
+                ),
             ),
+            actionView = NotificationActionView.ACTIONABLE,
+            runtimeActionItemIds = setOf(9L, 3L),
         )
         val bindings = RecordingProgram()
 
         query.bindTo(bindings)
 
         assertEquals(
-            "SELECT * FROM notification_items WHERE " +
+            "SELECT * FROM notification_items WHERE itemId IN (3,9) AND (" +
                 "(sourcePackage = ? AND sourceUserRef = ?) OR " +
                 "(sourcePackage = ? AND sourceUserRef = ?) OR " +
-                "(sourcePackage = ? AND sourceUserRef = ?) " +
+                "(sourcePackage = ? AND sourceUserRef = ?)) " +
                 "ORDER BY sortTimeEpochMillis DESC, itemId DESC",
             query.sql,
         )
@@ -49,9 +53,87 @@ class InboxSourceFilterTest {
         )
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun emptySourceSetCannotCreateFilteredQuery() {
-        buildPageItemsFromSourcesQuery(emptySet())
+    @Test
+    fun emptyRuntimeSetCreatesEmptyInboxAndFullArchive() {
+        assertEquals(
+            "SELECT * FROM notification_items WHERE 0 ORDER BY sortTimeEpochMillis DESC, itemId DESC",
+            buildPageItemsQuery(
+                viewFilter = InboxViewFilter(),
+                actionView = NotificationActionView.ACTIONABLE,
+                runtimeActionItemIds = emptySet(),
+            ).sql,
+        )
+        assertEquals(
+            "SELECT * FROM notification_items WHERE 1 ORDER BY sortTimeEpochMillis DESC, itemId DESC",
+            buildPageItemsQuery(
+                viewFilter = InboxViewFilter(),
+                actionView = NotificationActionView.UNAVAILABLE_ARCHIVE,
+                runtimeActionItemIds = emptySet(),
+            ).sql,
+        )
+    }
+
+    @Test
+    fun archiveExcludesCurrentRuntimeActionsWithoutConsumingSqlBindings() {
+        val query = buildPageItemsQuery(
+            viewFilter = InboxViewFilter(
+                includedSources = setOf(AppUserKey("personal", "example.same")),
+            ),
+            actionView = NotificationActionView.UNAVAILABLE_ARCHIVE,
+            runtimeActionItemIds = setOf(12L, 7L),
+        )
+        val bindings = RecordingProgram()
+
+        query.bindTo(bindings)
+
+        assertEquals(
+            "SELECT * FROM notification_items WHERE itemId NOT IN (7,12) AND " +
+                "((sourcePackage = ? AND sourceUserRef = ?)) " +
+                "ORDER BY sortTimeEpochMillis DESC, itemId DESC",
+            query.sql,
+        )
+        assertEquals(mapOf(1 to "example.same", 2 to "personal"), bindings.values)
+    }
+
+    @Test
+    fun excludedSourceUsesNegatedPairAndLeavesFutureSourcesVisible() {
+        val query = buildPageItemsQuery(
+            viewFilter = InboxViewFilter(
+                excludedSources = setOf(AppUserKey("personal", "example.hidden")),
+            ),
+            actionView = NotificationActionView.UNAVAILABLE_ARCHIVE,
+            runtimeActionItemIds = emptySet(),
+        )
+        val bindings = RecordingProgram()
+
+        query.bindTo(bindings)
+
+        assertEquals(
+            "SELECT * FROM notification_items WHERE 1 AND NOT " +
+                "((sourcePackage = ? AND sourceUserRef = ?)) " +
+                "ORDER BY sortTimeEpochMillis DESC, itemId DESC",
+            query.sql,
+        )
+        assertEquals(mapOf(1 to "example.hidden", 2 to "personal"), bindings.values)
+    }
+
+    @Test
+    fun sourceShortcutsKeepWhitelistAndBlacklistMutuallyExclusive() {
+        val source = AppUserKey("personal", "example.alpha")
+        val other = AppUserKey("personal", "example.beta")
+
+        assertEquals(
+            InboxViewFilter(includedSources = setOf(source)),
+            InboxViewFilter(excludedSources = setOf(other)).only(source),
+        )
+        assertEquals(
+            InboxViewFilter(excludedSources = setOf(source)),
+            InboxViewFilter().without(source),
+        )
+        assertEquals(
+            InboxViewFilter(includedSources = setOf(other)),
+            InboxViewFilter(includedSources = setOf(source, other)).without(source),
+        )
     }
 
     private class RecordingProgram : SupportSQLiteProgram {

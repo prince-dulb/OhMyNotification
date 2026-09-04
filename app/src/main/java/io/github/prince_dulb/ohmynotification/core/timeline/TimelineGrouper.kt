@@ -41,11 +41,13 @@ object TimelineGrouper {
             var scan = anchorIndex + 1
             while (scan < orderedItems.size) {
                 val candidate = orderedItems[scan]
-                if (anchor.firstReceivedAtEpochMillis - candidate.firstReceivedAtEpochMillis > windowMillis) break
-                if (
+                val sameSource =
                     candidate.sourcePackage == anchor.sourcePackage &&
                     candidate.sourceUserRef == anchor.sourceUserRef
-                ) {
+                val outsideWindow =
+                    anchor.firstReceivedAtEpochMillis - candidate.firstReceivedAtEpochMillis > windowMillis
+                if (outsideWindow && (!sameSource || otherApps > 0)) break
+                if (sameSource) {
                     if (!consumed[scan]) memberIndexes += scan
                 } else {
                     if (otherApps == maxInterveningOtherItems) break

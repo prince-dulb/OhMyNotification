@@ -289,10 +289,10 @@ internal class DrawerMemberLocator(
     }
 }
 
-internal object AnchorV1TimelineGrouper {
+internal object AnchorV2TimelineGrouper {
     const val WINDOW_MILLIS = 15L * 60L * 1_000L
     const val MAX_INTERVENING_OTHER_ITEMS = 3
-    const val STRATEGY_VERSION = "ANCHOR_V1"
+    const val STRATEGY_VERSION = "ANCHOR_V2"
 
     fun group(
         orderedItems: List<TimelineItem>,
@@ -327,8 +327,11 @@ internal object AnchorV1TimelineGrouper {
             var scanIndex = anchorIndex + 1
             while (scanIndex < store.size) {
                 val candidate = store[scanIndex]
-                if (anchor.firstReceivedAtMillis - candidate.firstReceivedAtMillis > WINDOW_MILLIS) break
-                if (candidate.source != anchor.source) {
+                val sameSource = candidate.source == anchor.source
+                val outsideWindow =
+                    anchor.firstReceivedAtMillis - candidate.firstReceivedAtMillis > WINDOW_MILLIS
+                if (outsideWindow && (!sameSource || interveningOtherItems > 0)) break
+                if (!sameSource) {
                     if (interveningOtherItems == MAX_INTERVENING_OTHER_ITEMS) break
                     interveningOtherItems += 1
                 } else if (!consumed[scanIndex]) {

@@ -1,6 +1,7 @@
 package io.github.prince_dulb.ohmynotification.data
 
 import io.github.prince_dulb.ohmynotification.core.model.MonitoringPolicySnapshot
+import io.github.prince_dulb.ohmynotification.core.model.NotificationType
 import java.util.concurrent.atomic.AtomicReference
 
 class MonitoringPolicyStore(
@@ -11,6 +12,7 @@ class MonitoringPolicyStore(
         MonitoringPolicySnapshot(
             alwaysExcludedPackages = alwaysExcluded,
             userExcludedPackages = emptySet(),
+            recordedNotificationTypes = NotificationType.entries.toSet(),
             revision = 0L,
         ),
     )
@@ -33,5 +35,17 @@ class MonitoringPolicyStore(
         val packages = current.get().userExcludedPackages.toMutableSet()
         if (excluded) packages += sourcePackage else packages -= sourcePackage
         replaceUserExclusions(packages)
+    }
+
+    @Synchronized
+    fun replaceRecordedNotificationTypes(types: Set<NotificationType>) {
+        val previous = current.get()
+        if (previous.recordedNotificationTypes == types) return
+        current.set(
+            previous.copy(
+                recordedNotificationTypes = types.toSet(),
+                revision = previous.revision + 1,
+            ),
+        )
     }
 }

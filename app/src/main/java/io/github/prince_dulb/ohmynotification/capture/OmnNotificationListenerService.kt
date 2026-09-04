@@ -4,15 +4,18 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import io.github.prince_dulb.ohmynotification.OmnApplication
 import io.github.prince_dulb.ohmynotification.core.model.ObservedCallbackKind
+import java.lang.ref.WeakReference
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 class OmnNotificationListenerService : NotificationListenerService() {
     private val graph get() = (application as OmnApplication).graph
-    private val workQueue = Channel<ListenerWork>(capacity = WORK_QUEUE_CAPACITY)
+    private val workQueue = Channel<ListenerWork>(capacity = Channel.UNLIMITED)
 
     @Volatile
     private var listenerConnectionId: String? = null
@@ -20,7 +23,16 @@ class OmnNotificationListenerService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         graph.serialScope.launch {
-            for (work in workQueue) process(work)
+            for (work in workQueue) {
+                isolateListenerWork(
+                    block = { process(work) },
+                    onFailure = { markProcessingOperational(false) },
+                ).also { succeeded ->
+                    if (succeeded && work !is ListenerWork.RecoveryBarrier) {
+                        markProcessingOperational(true)
+                    }
+                }
+            }
         }
     }
 
@@ -28,6 +40,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
         super.onListenerConnected()
         val connectionId = UUID.randomUUID().toString()
         listenerConnectionId = connectionId
+        activeService = WeakReference(this)
         ListenerRuntimeState.setConnected(true, connectionId)
         enqueue(ListenerWork.Connected(connectionId, System.currentTimeMillis()))
 
@@ -44,6 +57,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onListenerDisconnected() {
+        clearActiveService(this)
         val connectionId = listenerConnectionId
         listenerConnectionId = null
         ListenerRuntimeState.setConnected(false)
@@ -83,6 +97,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        clearActiveService(this)
         ListenerRuntimeState.setConnected(false)
         listenerConnectionId?.let { connectionId ->
             enqueue(ListenerWork.Disconnected(connectionId, System.currentTimeMillis()))
@@ -98,22 +113,49 @@ class OmnNotificationListenerService : NotificationListenerService() {
         removalReason: Int?,
         connectionId: String,
     ) {
-        val result = graph.snapshotFactory.capture(
-            statusBarNotification = statusBarNotification,
-            callbackKind = callbackKind,
-            listenerConnectionId = connectionId,
-            policy = graph.policyStore.snapshot(),
-            removalReason = removalReason,
-        )
+        val result = runCatching {
+            graph.snapshotFactory.capture(
+                statusBarNotification = statusBarNotification,
+                callbackKind = callbackKind,
+                listenerConnectionId = connectionId,
+                policy = graph.policyStore.snapshot(),
+                removalReason = removalReason,
+            )
+        }.getOrElse {
+            markProcessingOperational(false)
+            return
+        }
         if (result !is SnapshotResult.Captured) return
         enqueue(ListenerWork.Captured(result))
     }
 
-    private fun enqueue(work: ListenerWork) {
-        if (workQueue.trySend(work).isSuccess) return
-        runCatching {
-            runBlocking { workQueue.send(work) }
+    private fun enqueue(work: ListenerWork): Boolean {
+        val accepted = workQueue.trySend(work).isSuccess
+        if (!accepted) markProcessingOperational(false)
+        return accepted
+    }
+
+    private suspend fun recoverActiveNotificationsOnDemand(): Boolean {
+        val connectionId = listenerConnectionId ?: return false
+        val notifications = runCatching { activeNotifications?.toList().orEmpty() }
+            .getOrElse { return false }
+        notifications.sortedBy(StatusBarNotification::getPostTime).forEach { notification ->
+            capture(notification, ObservedCallbackKind.RECOVERY_SNAPSHOT, null, connectionId)
         }
+        val completed = CompletableDeferred<Unit>()
+        if (!enqueue(ListenerWork.RecoveryBarrier(completed))) return false
+        return withTimeoutOrNull(ON_DEMAND_RECOVERY_TIMEOUT_MILLIS) {
+            completed.await()
+            true
+        } ?: false
+    }
+
+    private fun markProcessingOperational(isOperational: Boolean) {
+        if (!ListenerRuntimeState.setProcessingOperational(isOperational)) return
+        graph.statusNotificationController.onProcessingHealthChanged(
+            isOperational = isOperational,
+            listenerConnected = ListenerRuntimeState.isConnected(),
+        )
     }
 
     private suspend fun process(work: ListenerWork) {
@@ -159,6 +201,7 @@ class OmnNotificationListenerService : NotificationListenerService() {
                 )
                 graph.statusNotificationController.onListenerConnectionChanged(isConnected = false)
             }
+            is ListenerWork.RecoveryBarrier -> work.completed.complete(Unit)
         }
     }
 
@@ -168,10 +211,34 @@ class OmnNotificationListenerService : NotificationListenerService() {
         data class RecoveryCompleted(val connectionId: String, val observedAtEpochMillis: Long) : ListenerWork
         data class RecoveryFailed(val connectionId: String, val observedAtEpochMillis: Long) : ListenerWork
         data class Disconnected(val connectionId: String?, val observedAtEpochMillis: Long) : ListenerWork
+        data class RecoveryBarrier(val completed: CompletableDeferred<Unit>) : ListenerWork
     }
 
-    private companion object {
-        const val WORK_QUEUE_CAPACITY = 256
+    companion object {
+        @Volatile
+        private var activeService = WeakReference<OmnNotificationListenerService>(null)
+
+        internal suspend fun requestActiveNotificationRecovery(): Boolean =
+            activeService.get()?.recoverActiveNotificationsOnDemand() ?: false
+
+        private fun clearActiveService(service: OmnNotificationListenerService) {
+            if (activeService.get() === service) activeService.clear()
+        }
+
         const val REBIND_DELAY_MILLIS = 3_000L
+        private const val ON_DEMAND_RECOVERY_TIMEOUT_MILLIS = 2_500L
     }
+}
+
+internal suspend fun isolateListenerWork(
+    block: suspend () -> Unit,
+    onFailure: (Exception) -> Unit,
+): Boolean = try {
+    block()
+    true
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (failure: Exception) {
+    runCatching { onFailure(failure) }
+    false
 }

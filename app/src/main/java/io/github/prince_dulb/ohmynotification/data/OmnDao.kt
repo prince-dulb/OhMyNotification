@@ -46,6 +46,12 @@ interface OmnDao {
     @Update
     suspend fun updateItem(item: NotificationItemEntity)
 
+    @Query("DELETE FROM notification_items WHERE itemId = :itemId")
+    suspend fun deleteItem(itemId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM health_evidence WHERE itemId = :itemId")
+    suspend fun healthEvidenceCountForItem(itemId: Long): Int
+
     @Insert
     suspend fun insertHealthEvidence(evidence: HealthEvidenceEntity): Long
 

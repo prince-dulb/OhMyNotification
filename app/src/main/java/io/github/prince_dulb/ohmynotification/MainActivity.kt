@@ -12,20 +12,24 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import io.github.prince_dulb.ohmynotification.capture.ListenerRebindResult
 import io.github.prince_dulb.ohmynotification.capture.ListenerRebindTrigger
 import io.github.prince_dulb.ohmynotification.capture.ListenerRuntimeState
 import io.github.prince_dulb.ohmynotification.capture.OmnNotificationListenerComponent
+import io.github.prince_dulb.ohmynotification.capture.OmnNotificationListenerService
 import io.github.prince_dulb.ohmynotification.capture.RuntimeActionStatus
 import io.github.prince_dulb.ohmynotification.data.NotificationItemEntity
 import io.github.prince_dulb.ohmynotification.ui.AppUiState
 import io.github.prince_dulb.ohmynotification.ui.OmnAppScreen
 import io.github.prince_dulb.ohmynotification.ui.theme.OhMyNotificationTheme
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val uiState = mutableStateOf(AppUiState())
@@ -56,8 +60,9 @@ class MainActivity : ComponentActivity() {
                 OmnAppScreen(
                     state = uiState.value,
                     repository = (application as OmnApplication).graph.repository,
-                    includedSourceKeys =
-                        (application as OmnApplication).graph.inboxViewPreferencesStore.includedSourceKeys,
+                    inboxViewFilter =
+                        (application as OmnApplication).graph.inboxViewPreferencesStore.filter,
+                    appSettings = (application as OmnApplication).graph.appSettingsStore.settings,
                     currentUserRef = android.os.Process.myUserHandle().toString(),
                     currentRuntimeSessionId = (application as OmnApplication).graph.runtimeSessionId,
                     currentListenerConnectionId = ListenerRuntimeState.connectionId(),
@@ -68,10 +73,14 @@ class MainActivity : ComponentActivity() {
                     onOpenStatusChannel = ::openStatusNotificationChannel,
                     onRequestListenerRebind = ::requestListenerRebind,
                     onSetSourceExcluded = ::setSourceExcluded,
-                    onApplyIncludedSources =
-                        (application as OmnApplication).graph.inboxViewPreferencesStore::setIncludedSources,
+                    onSetNotificationTypeRecorded =
+                        (application as OmnApplication).graph.appSettingsStore::setNotificationTypeRecorded,
+                    onSetGroupingWindowMinutes =
+                        (application as OmnApplication).graph.appSettingsStore::setGroupingWindowMinutes,
+                    onApplyInboxViewFilter =
+                        (application as OmnApplication).graph.inboxViewPreferencesStore::setFilter,
                     onOpenNotification = ::openNotification,
-                    onOpenSourceApp = ::openSourceApp,
+                    onDeleteNotification = ::deleteNotification,
                 )
             }
         }
@@ -111,6 +120,7 @@ class MainActivity : ComponentActivity() {
             ),
             listenerConnected = ListenerRuntimeState.isConnected(),
             listenerConnectionObserved = ListenerRuntimeState.hasObservedConnectionState(),
+            processingOperational = ListenerRuntimeState.isProcessingOperational(),
             statusNotificationGranted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED,
             statusNotificationChannelEnabled =
@@ -171,17 +181,34 @@ class MainActivity : ComponentActivity() {
         return result.await()
     }
 
-    private fun openNotification(item: NotificationItemEntity): RuntimeActionStatus =
-        (application as OmnApplication).graph.repository.sendRuntimeAction(item)
-
-    private fun openSourceApp(sourcePackage: String): Boolean {
-        val launchIntent = packageManager.getLaunchIntentForPackage(sourcePackage) ?: return false
-        return try {
-            startActivity(launchIntent)
-            true
-        } catch (_: ActivityNotFoundException) {
-            false
+    private suspend fun openNotification(item: NotificationItemEntity): RuntimeActionStatus {
+        val graph = (application as OmnApplication).graph
+        val immediate = graph.repository.sendRuntimeAction(item)
+        if (immediate != RuntimeActionStatus.NOT_FOUND) return immediate
+        return withContext(NonCancellable) {
+            OmnNotificationListenerService.requestActiveNotificationRecovery()
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                RuntimeActionStatus.NOT_FOUND
+            } else {
+                graph.repository.sendRuntimeAction(item)
+            }
         }
+    }
+
+    private suspend fun deleteNotification(item: NotificationItemEntity): Boolean {
+        val graph = (application as OmnApplication).graph
+        val result = CompletableDeferred<Boolean>()
+        graph.serialScope.launch {
+            val deleted = runCatching { graph.repository.deleteItem(item.itemId) }.getOrDefault(false)
+            if (deleted) {
+                graph.statusNotificationController.onItemDeleted(
+                    currentRecordCount = graph.repository.currentItemCount(),
+                    latestItem = graph.repository.latestItem(),
+                )
+            }
+            result.complete(deleted)
+        }
+        return result.await()
     }
 
     private companion object {

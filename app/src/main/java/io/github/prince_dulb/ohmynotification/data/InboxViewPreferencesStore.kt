@@ -11,44 +11,81 @@ import kotlinx.coroutines.withContext
 class InboxViewPreferencesStore(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val currentUserRef = Process.myUserHandle().toString()
-    private val includedSources = MutableStateFlow(readIncludedSources())
+    private val filterState = MutableStateFlow(readFilter())
 
-    val includedSourceKeys: StateFlow<Set<AppUserKey>> = includedSources.asStateFlow()
+    val filter: StateFlow<InboxViewFilter> = filterState.asStateFlow()
 
     suspend fun setIncludedSources(sources: Set<AppUserKey>): Boolean = withContext(Dispatchers.IO) {
-        val normalized = sources.toSet()
+        setFilter(InboxViewFilter(includedSources = sources.toSet()))
+    }
+
+    suspend fun setFilter(filter: InboxViewFilter): Boolean = withContext(Dispatchers.IO) {
+        val normalized = filter.normalized()
         synchronized(this@InboxViewPreferencesStore) {
-            if (includedSources.value == normalized) return@withContext true
+            if (filterState.value == normalized) return@withContext true
             val saved = preferences.edit()
                 .putStringSet(
                     INCLUDED_SOURCE_KEYS,
-                    normalized.mapTo(linkedSetOf(), InboxSourceKeyCodec::encode),
+                    normalized.includedSources.mapTo(linkedSetOf(), InboxSourceKeyCodec::encode),
+                )
+                .putStringSet(
+                    EXCLUDED_SOURCE_KEYS,
+                    normalized.excludedSources.mapTo(linkedSetOf(), InboxSourceKeyCodec::encode),
                 )
                 .commit()
-            if (saved) includedSources.value = normalized
+            if (saved) filterState.value = normalized
             saved
         }
     }
 
-    private fun readIncludedSources(): Set<AppUserKey> {
+    private fun readFilter(): InboxViewFilter {
         val encoded = preferences.getStringSet(INCLUDED_SOURCE_KEYS, null)
         if (encoded != null) {
-            return encoded.mapNotNullTo(linkedSetOf(), InboxSourceKeyCodec::decode)
+            val included = encoded.mapNotNullTo(linkedSetOf(), InboxSourceKeyCodec::decode)
+            val excluded = preferences.getStringSet(EXCLUDED_SOURCE_KEYS, emptySet())
+                .orEmpty()
+                .mapNotNullTo(linkedSetOf(), InboxSourceKeyCodec::decode)
+            return InboxViewFilter(includedSources = included, excludedSources = excluded).normalized()
         }
 
         // Phase-0 builds stored package names only. Interpret them as the current Android user
         // until the user next applies the filter, then the exact composite keys are persisted.
-        return preferences.getStringSet(LEGACY_INCLUDED_SOURCE_PACKAGES, emptySet())
+        val legacyIncluded = preferences.getStringSet(LEGACY_INCLUDED_SOURCE_PACKAGES, emptySet())
             .orEmpty()
             .filter(String::isNotBlank)
             .mapTo(linkedSetOf()) { sourcePackage -> AppUserKey(currentUserRef, sourcePackage) }
+        return InboxViewFilter(includedSources = legacyIncluded)
     }
 
     private companion object {
         const val PREFERENCES_NAME = "omn-inbox-view"
         const val INCLUDED_SOURCE_KEYS = "included-source-keys-v1"
+        const val EXCLUDED_SOURCE_KEYS = "excluded-source-keys-v1"
         const val LEGACY_INCLUDED_SOURCE_PACKAGES = "included-source-packages"
     }
+}
+
+data class InboxViewFilter(
+    val includedSources: Set<AppUserKey> = emptySet(),
+    val excludedSources: Set<AppUserKey> = emptySet(),
+) {
+    init {
+        require(includedSources.isEmpty() || excludedSources.isEmpty())
+    }
+
+    fun only(source: AppUserKey): InboxViewFilter =
+        InboxViewFilter(includedSources = setOf(source))
+
+    fun without(source: AppUserKey): InboxViewFilter = when {
+        includedSources.isEmpty() -> copy(excludedSources = excludedSources + source)
+        includedSources.size > 1 -> copy(includedSources = includedSources - source)
+        else -> InboxViewFilter(excludedSources = setOf(source))
+    }
+
+    internal fun normalized(): InboxViewFilter = copy(
+        includedSources = includedSources.toSet(),
+        excludedSources = excludedSources.toSet(),
+    )
 }
 
 internal object InboxSourceKeyCodec {

@@ -12,6 +12,7 @@ class StatusPresentationTest {
                 listenerAccessGranted = false,
                 connectionObserved = true,
                 listenerConnected = false,
+                processingOperational = false,
             ),
         )
     }
@@ -24,6 +25,7 @@ class StatusPresentationTest {
                 listenerAccessGranted = true,
                 connectionObserved = false,
                 listenerConnected = false,
+                processingOperational = true,
             ),
         )
     }
@@ -36,6 +38,7 @@ class StatusPresentationTest {
                 listenerAccessGranted = true,
                 connectionObserved = true,
                 listenerConnected = false,
+                processingOperational = true,
             ),
         )
     }
@@ -48,6 +51,20 @@ class StatusPresentationTest {
                 listenerAccessGranted = true,
                 connectionObserved = true,
                 listenerConnected = true,
+                processingOperational = true,
+            ),
+        )
+    }
+
+    @Test
+    fun liveConnectionWithFailedProcessingDoesNotReportListening() {
+        assertEquals(
+            StatusPresentationState.PROCESSING_INTERRUPTED,
+            StatusPresentationDeriver.derive(
+                listenerAccessGranted = true,
+                connectionObserved = true,
+                listenerConnected = true,
+                processingOperational = false,
             ),
         )
     }

@@ -18,25 +18,47 @@ class InboxSourceIsolationTest {
         try {
             val dao = database.omnDao()
             dao.insertItem(item(sourcePackage = "example.same", sourceUserRef = "user-personal", time = 300L))
-            dao.insertItem(item(sourcePackage = "example.same", sourceUserRef = "user-work", time = 200L))
+            val workItemId = dao.insertItem(
+                item(sourcePackage = "example.same", sourceUserRef = "user-work", time = 200L),
+            )
             dao.insertItem(item(sourcePackage = "example.other", sourceUserRef = "user-personal", time = 100L))
 
             assertEquals(
                 listOf("user-work"),
                 load(
                     dao,
-                    setOf(AppUserKey("user-work", "example.same")),
+                    InboxViewFilter(includedSources = setOf(AppUserKey("user-work", "example.same"))),
+                ).map(NotificationItemEntity::sourceUserRef),
+            )
+            assertEquals(
+                listOf("user-work", "user-personal"),
+                load(
+                    dao,
+                    InboxViewFilter(
+                        excludedSources = setOf(AppUserKey("user-personal", "example.same")),
+                    ),
                 ).map(NotificationItemEntity::sourceUserRef),
             )
             assertEquals(
                 listOf("example.same", "example.other"),
                 load(
                     dao,
-                    setOf(
-                        AppUserKey("user-personal", "example.same"),
-                        AppUserKey("user-personal", "example.other"),
+                    InboxViewFilter(
+                        includedSources = setOf(
+                            AppUserKey("user-personal", "example.same"),
+                            AppUserKey("user-personal", "example.other"),
+                        ),
                     ),
                 ).map(NotificationItemEntity::sourcePackage),
+            )
+            assertEquals(
+                listOf("user-work"),
+                load(
+                    dao = dao,
+                    viewFilter = InboxViewFilter(),
+                    actionView = NotificationActionView.ACTIONABLE,
+                    runtimeActionItemIds = setOf(workItemId),
+                ).map(NotificationItemEntity::sourceUserRef),
             )
         } finally {
             database.close()
@@ -45,9 +67,13 @@ class InboxSourceIsolationTest {
 
     private suspend fun load(
         dao: OmnDao,
-        sources: Set<AppUserKey>,
+        viewFilter: InboxViewFilter,
+        actionView: NotificationActionView = NotificationActionView.UNAVAILABLE_ARCHIVE,
+        runtimeActionItemIds: Set<Long> = emptySet(),
     ): List<NotificationItemEntity> {
-        val result = dao.pageItemsFromSources(buildPageItemsFromSourcesQuery(sources)).load(
+        val result = dao.pageItemsFromSources(
+            buildPageItemsQuery(viewFilter, actionView, runtimeActionItemIds),
+        ).load(
             PagingSource.LoadParams.Refresh(
                 key = null,
                 loadSize = 20,

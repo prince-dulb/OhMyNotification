@@ -9,6 +9,8 @@ import io.github.prince_dulb.ohmynotification.core.model.ActionCapabilitySet
 import io.github.prince_dulb.ohmynotification.core.model.MonitoringPolicySnapshot
 import io.github.prince_dulb.ohmynotification.core.model.NotificationIdentity
 import io.github.prince_dulb.ohmynotification.core.model.NotificationObservation
+import io.github.prince_dulb.ohmynotification.core.model.NotificationTypeClassifier
+import io.github.prince_dulb.ohmynotification.core.model.NotificationTypeSignals
 import io.github.prince_dulb.ohmynotification.core.model.ObservedCallbackKind
 import io.github.prince_dulb.ohmynotification.core.model.RawVisibleContent
 import io.github.prince_dulb.ohmynotification.core.model.SnapshotCopyWarning
@@ -23,7 +25,7 @@ sealed interface SnapshotResult {
     data class Failed(val reason: FailureReason) : SnapshotResult
 }
 
-enum class ExclusionReason { SELF_PACKAGE, USER_POLICY }
+enum class ExclusionReason { SELF_PACKAGE, USER_POLICY, TYPE_POLICY }
 enum class FailureReason { INVALID_IDENTITY }
 
 class NotificationSnapshotFactory(
@@ -50,6 +52,22 @@ class NotificationSnapshotFactory(
         }
         if (policy.excludes(sourcePackage)) {
             return SnapshotResult.Excluded(ExclusionReason.USER_POLICY)
+        }
+
+        val notification = statusBarNotification.notification
+        val notificationType = NotificationTypeClassifier.classify(
+            NotificationTypeSignals(
+                category = runCatching { notification.category }.getOrNull(),
+                hasMediaSession = runCatching {
+                    notification.extras?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true
+                }.getOrDefault(false),
+                isOngoing = runCatching {
+                    notification.flags and Notification.FLAG_ONGOING_EVENT != 0
+                }.getOrDefault(false),
+            ),
+        )
+        if (!policy.records(notificationType)) {
+            return SnapshotResult.Excluded(ExclusionReason.TYPE_POLICY)
         }
 
         val identity = NotificationIdentity(
@@ -79,7 +97,6 @@ class NotificationSnapshotFactory(
             )
         }
 
-        val notification = statusBarNotification.notification
         val extras = notification.extras ?: Bundle.EMPTY
         val warnings = linkedSetOf<SnapshotCopyWarning>()
         val content = RawVisibleContent(

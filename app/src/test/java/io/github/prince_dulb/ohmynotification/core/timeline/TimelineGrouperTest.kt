@@ -31,6 +31,45 @@ class TimelineGrouperTest {
     }
 
     @Test
+    fun consecutiveSameSourceIgnoresTimeWindow() {
+        val result = TimelineGrouper.group(
+            listOf(
+                item(1, "a", minute = 4_000),
+                item(2, "a", minute = 1),
+            ),
+        )
+
+        assertEquals(listOf(listOf(1L, 2L)), result.map(TimelineGroup::memberItemIds))
+    }
+
+    @Test
+    fun configuredWindowControlsOnlyGroupingAcrossOtherSources() {
+        val items = listOf(
+            item(1, "a", minute = 60),
+            item(2, "b", minute = 45),
+            item(3, "a", minute = 30),
+        )
+
+        val thirtyMinutes = TimelineGrouper.group(items, windowMillis = 30L * 60_000L)
+        val fifteenMinutes = TimelineGrouper.group(items, windowMillis = 15L * 60_000L)
+
+        assertEquals(listOf(listOf(1L, 3L), listOf(2L)), thirtyMinutes.map(TimelineGroup::memberItemIds))
+        assertEquals(listOf(listOf(1L), listOf(2L), listOf(3L)), fifteenMinutes.map(TimelineGroup::memberItemIds))
+    }
+
+    @Test
+    fun filteredVisibleStreamAlsoMergesLongConsecutiveSameSource() {
+        val visibleAfterFiltering = listOf(
+            item(1, "a", minute = 4_000),
+            item(3, "a", minute = 1),
+        )
+
+        val result = TimelineGrouper.group(visibleAfterFiltering)
+
+        assertEquals(listOf(listOf(1L, 3L)), result.map(TimelineGroup::memberItemIds))
+    }
+
+    @Test
     fun fourthInterveningItemStopsDrawerScan() {
         val result = TimelineGrouper.group(
             listOf(

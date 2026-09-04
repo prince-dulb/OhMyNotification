@@ -44,6 +44,7 @@ class NotificationRepository(
     val sourceSummaries: Flow<List<SourceSummaryRow>> = dao.observeSourceSummaries()
     val excludedSources: Flow<List<ExcludedSourceEntity>> = dao.observeExcludedSources()
     val itemCount: Flow<Long> = dao.observeItemCount()
+    val runtimeActionItemIds = runtimeActionStore.itemIds
 
     suspend fun currentItemCount(): Long = dao.itemCount()
 
@@ -52,7 +53,11 @@ class NotificationRepository(
     fun healthEvidenceSince(startEpochMillis: Long): Flow<List<HealthEvidenceEntity>> =
         dao.observeHealthEvidenceSince(startEpochMillis)
 
-    fun pagedItems(sources: Set<AppUserKey>): Flow<PagingData<NotificationItemEntity>> = Pager(
+    fun pagedItems(
+        viewFilter: InboxViewFilter,
+        actionView: NotificationActionView,
+        runtimeActionItemIds: Set<Long>,
+    ): Flow<PagingData<NotificationItemEntity>> = Pager(
         config = PagingConfig(
             pageSize = 40,
             prefetchDistance = 12,
@@ -60,8 +65,13 @@ class NotificationRepository(
             maxSize = 200,
         ),
         pagingSourceFactory = {
-            if (sources.isEmpty()) dao.pageAllItems()
-            else dao.pageItemsFromSources(buildPageItemsFromSourcesQuery(sources))
+            dao.pageItemsFromSources(
+                buildPageItemsQuery(
+                    viewFilter = viewFilter,
+                    actionView = actionView,
+                    runtimeActionItemIds = runtimeActionItemIds,
+                ),
+            )
         },
     ).flow
 
@@ -140,6 +150,13 @@ class NotificationRepository(
         runtimeActionStore.sendFromVisibleActivity(item.itemId)
 
     fun hasRuntimeAction(item: NotificationItemEntity): Boolean = runtimeActionStore.contains(item.itemId)
+
+    suspend fun deleteItem(itemId: Long): Boolean {
+        require(itemId > 0L)
+        val deleted = database.withTransaction { dao.deleteItem(itemId) == 1 }
+        if (deleted) runtimeActionStore.remove(itemId)
+        return deleted
+    }
 
     private suspend fun commitContent(
         observation: NotificationObservation,
@@ -315,17 +332,41 @@ internal class PositiveHealthEvidenceGate(
     )
 }
 
-internal fun buildPageItemsFromSourcesQuery(sources: Set<AppUserKey>): SupportSQLiteQuery {
-    require(sources.isNotEmpty())
-    val ordered = sources.sortedWith(
+enum class NotificationActionView { ACTIONABLE, UNAVAILABLE_ARCHIVE }
+
+internal fun buildPageItemsQuery(
+    viewFilter: InboxViewFilter,
+    actionView: NotificationActionView,
+    runtimeActionItemIds: Set<Long>,
+): SupportSQLiteQuery {
+    require(runtimeActionItemIds.all { itemId -> itemId > 0L })
+    val orderedItemIds = runtimeActionItemIds.sorted()
+    val actionPredicate = when {
+        orderedItemIds.isEmpty() && actionView == NotificationActionView.ACTIONABLE -> "0"
+        orderedItemIds.isEmpty() -> "1"
+        actionView == NotificationActionView.ACTIONABLE ->
+            "itemId IN (${orderedItemIds.joinToString(separator = ",")})"
+        else -> "itemId NOT IN (${orderedItemIds.joinToString(separator = ",")})"
+    }
+    val sourceSet = if (viewFilter.includedSources.isNotEmpty()) {
+        viewFilter.includedSources
+    } else {
+        viewFilter.excludedSources
+    }
+    val ordered = sourceSet.sortedWith(
         compareBy(AppUserKey::sourcePackage, AppUserKey::sourceUserRef),
     )
-    val where = ordered.joinToString(separator = " OR ") {
+    val sourcePredicate = ordered.joinToString(separator = " OR ") {
         "(sourcePackage = ? AND sourceUserRef = ?)"
     }
     val arguments = ordered.flatMap { source ->
         listOf(source.sourcePackage, source.sourceUserRef)
     }.toTypedArray()
+    val where = when {
+        sourcePredicate.isEmpty() -> actionPredicate
+        viewFilter.includedSources.isNotEmpty() -> "$actionPredicate AND ($sourcePredicate)"
+        else -> "$actionPredicate AND NOT ($sourcePredicate)"
+    }
     return SimpleSQLiteQuery(
         "SELECT * FROM notification_items WHERE $where " +
             "ORDER BY sortTimeEpochMillis DESC, itemId DESC",

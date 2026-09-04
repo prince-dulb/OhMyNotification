@@ -22,6 +22,7 @@ class StatusNotificationController(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var connected = false
     private var connectionObserved = false
+    private var processingOperational = true
     private var recordCount = 0L
     private var latestSource: String? = null
     private var latestTitle: String? = null
@@ -53,7 +54,16 @@ class StatusNotificationController(private val context: Context) {
     ) {
         connectionObserved = true
         connected = isConnected
+        if (isConnected) processingOperational = true
         updateSnapshot(currentRecordCount, latestItem)
+        schedule(immediate = true)
+    }
+
+    @Synchronized
+    fun onProcessingHealthChanged(isOperational: Boolean, listenerConnected: Boolean) {
+        connectionObserved = true
+        connected = listenerConnected
+        processingOperational = isOperational
         schedule(immediate = true)
     }
 
@@ -63,6 +73,15 @@ class StatusNotificationController(private val context: Context) {
         latestItem: NotificationItemEntity? = null,
     ) {
         updateSnapshot(currentRecordCount, latestItem)
+        schedule(immediate = true)
+    }
+
+    @Synchronized
+    fun onItemDeleted(currentRecordCount: Long, latestItem: NotificationItemEntity?) {
+        recordCount = currentRecordCount
+        latestSource = latestItem?.sourceLabelSnapshot ?: latestItem?.sourcePackage
+        latestTitle = latestItem?.title
+        latestEventTimeEpochMillis = latestItem?.firstReceivedAtEpochMillis
         schedule(immediate = true)
     }
 
@@ -122,10 +141,13 @@ class StatusNotificationController(private val context: Context) {
             listenerAccessGranted = listenerAccessGranted,
             connectionObserved = connectionObserved,
             listenerConnected = connected,
+            processingOperational = processingOperational,
         )
         val source = latestSource
         val privateTitle = when (presentation) {
             StatusPresentationState.LISTENING -> context.getString(R.string.status_title_connected)
+            StatusPresentationState.PROCESSING_INTERRUPTED ->
+                context.getString(R.string.status_title_processing_interrupted)
             StatusPresentationState.WAITING_FOR_CONNECTION ->
                 context.getString(R.string.status_title_waiting_for_connection)
             StatusPresentationState.LISTENER_INTERRUPTED ->
@@ -134,6 +156,8 @@ class StatusNotificationController(private val context: Context) {
         }
         val summaryText = when (presentation) {
             StatusPresentationState.LISTENING -> context.getString(R.string.status_connected, recordCount)
+            StatusPresentationState.PROCESSING_INTERRUPTED ->
+                context.getString(R.string.status_processing_interrupted, recordCount)
             StatusPresentationState.WAITING_FOR_CONNECTION -> context.getString(R.string.status_waiting_for_connection)
             StatusPresentationState.LISTENER_INTERRUPTED ->
                 context.getString(R.string.status_disconnected, recordCount)

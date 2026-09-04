@@ -60,8 +60,11 @@ data class NotificationObservation(
 data class MonitoringPolicySnapshot(
     val alwaysExcludedPackages: Set<String>,
     val userExcludedPackages: Set<String>,
+    val recordedNotificationTypes: Set<NotificationType>,
     val revision: Long,
 ) {
     fun excludes(sourcePackage: String): Boolean =
         sourcePackage in alwaysExcludedPackages || sourcePackage in userExcludedPackages
+
+    fun records(type: NotificationType): Boolean = type in recordedNotificationTypes
 }

@@ -96,7 +96,7 @@ class TimelineQueryReferenceTest {
     }
 
     @Test
-    fun anchorV1CoversConfirmedGroupingBoundaries() {
+    fun anchorV2CoversConfirmedGroupingBoundaries() {
         assertDrawer(
             listOf(item("01", A, 42), item("02", A, 41), item("03", A, 40)),
             expectedMembers = listOf("01", "02", "03"),
@@ -123,6 +123,11 @@ class TimelineQueryReferenceTest {
             listOf(item("31", A, 42), item("32", B, 40), item("33", A, 26)),
         )
         assertTrue(overWindow.none { it is AppDrawerNode && it.groupingKey == A })
+
+        assertDrawer(
+            listOf(item("34", A, 4_000), item("35", A, 1)),
+            expectedMembers = listOf("34", "35"),
+        )
 
         val exactBoundary = group(
             listOf(
@@ -162,7 +167,7 @@ class TimelineQueryReferenceTest {
 
     @Test
     fun filteringPrecedesGroupingAndHiddenItemsDoNotCountAsIntervening() {
-        val all = listOf(item("71", A, 42), item("72", B, 40), item("73", A, 35))
+        val all = listOf(item("71", A, 4_000), item("72", B, 40), item("73", A, 1))
         val visible = all.filter(InboxFilter(setOf(A))::matches)
         val nodes = group(visible)
 
@@ -203,7 +208,7 @@ class TimelineQueryReferenceTest {
             )
         }.sortedWith(TimelineItemOrder)
         val store = PagedTimelineStore(items, pageSize = 37, maxCachedPages = 2)
-        val drawer = AnchorV1TimelineGrouper.group(
+        val drawer = AnchorV2TimelineGrouper.group(
             store = store,
             queryFingerprint = InboxFilter().fingerprint(),
         ).single() as AppDrawerNode
@@ -231,7 +236,7 @@ class TimelineQueryReferenceTest {
     }
 
     private fun group(items: List<TimelineItem>): List<TimelineNode> =
-        AnchorV1TimelineGrouper.group(
+        AnchorV2TimelineGrouper.group(
             orderedItems = items.sortedWith(TimelineItemOrder),
             queryFingerprint = InboxFilter().fingerprint(),
         )

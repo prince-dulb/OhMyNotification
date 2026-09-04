@@ -1,16 +1,18 @@
 [CmdletBinding()]
 <#
 .SYNOPSIS
-Checks the locally built Debug APK's signature, alignment, identity, SDK boundary, launcher, and 64-bit ABI support.
+Checks an installable APK's signature, alignment, identity, SDK boundary, launcher, build type, and 64-bit ABI support.
 
 .EXAMPLE
 .\tools\verify-installable-apk.ps1
 
 .EXAMPLE
-.\tools\verify-installable-apk.ps1 -ApkPath .\artifacts\OhMyNotification-0.1.3-mvp-debug.apk
+.\tools\verify-installable-apk.ps1 -ApkPath .\artifacts\OhMyNotification-1.0.0-release.apk -RequireRelease
 #>
 param(
-    [string]$ApkPath
+    [string]$ApkPath,
+    [string]$ExpectedVersion = '1.0.0',
+    [switch]$RequireRelease
 )
 
 $ErrorActionPreference = 'Stop'
@@ -81,9 +83,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $expectedPackage = 'io.github.prince_dulb.ohmynotification'
-$expectedVersion = '0.1.3-mvp'
-if ($badging -notmatch "package: name='$([regex]::Escape($expectedPackage))'.*versionName='$([regex]::Escape($expectedVersion))'") {
-    throw 'APK package identity or version does not match the MVP contract.'
+if ($badging -notmatch "package: name='$([regex]::Escape($expectedPackage))'.*versionName='$([regex]::Escape($ExpectedVersion))'") {
+    throw 'APK package identity or version does not match the release contract.'
 }
 if ($badging -notmatch "sdkVersion:'36'" -or $badging -notmatch "targetSdkVersion:'36'") {
     throw 'APK minSdk or targetSdk does not match the Android 16-only contract.'
@@ -91,8 +92,12 @@ if ($badging -notmatch "sdkVersion:'36'" -or $badging -notmatch "targetSdkVersio
 if ($badging -notmatch "launchable-activity: name='$([regex]::Escape($expectedPackage)).MainActivity'") {
     throw 'APK does not expose the expected launcher activity.'
 }
-if ($badging -notmatch 'application-debuggable') {
-    throw 'The local installation artifact must be a debuggable Debug APK.'
+$isDebuggable = $badging -match 'application-debuggable'
+if ($RequireRelease -and $isDebuggable) {
+    throw 'The release artifact must not be debuggable.'
+}
+if (-not $RequireRelease -and -not $isDebuggable) {
+    throw 'The default local installation artifact must be debuggable.'
 }
 
 $forbiddenPermissions = @(
@@ -121,4 +126,4 @@ finally {
 }
 
 $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $ApkPath).Hash.ToLowerInvariant()
-Write-Output "PASS apk=$([System.IO.Path]::GetFileName($ApkPath)) sha256=$sha256 package=$expectedPackage version=$expectedVersion arm64=$hasArm64"
+Write-Output "PASS apk=$([System.IO.Path]::GetFileName($ApkPath)) sha256=$sha256 package=$expectedPackage version=$ExpectedVersion release=$RequireRelease arm64=$hasArm64"

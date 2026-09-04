@@ -1,6 +1,7 @@
 # Local Android and IDE configuration
 local.properties
 .idea/
+.obsidian/
 *.iml
 
 # Gradle and Kotlin caches
