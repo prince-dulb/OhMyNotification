@@ -18,8 +18,6 @@
 
 当前版本：`v1.0.0`　·　系统要求：Android 16 及以上
 
-安装 APK 时，系统可能要求你允许浏览器或文件管理器“安装未知应用”。这是 Android 侧载应用的正常流程。
-
 ## 能做什么
 
 - 把通知保存在本机，系统通知被划掉后仍可回来查看。
@@ -28,7 +26,6 @@
 - 按一个或多个应用筛选记录，也可以停止记录指定应用。
 - 分别控制媒体、消息与通话、提醒与导航、持续运行与进度等通知类型；媒体通知默认关闭。
 - 在通知栏常驻一张低打扰状态卡，显示监听是否正常和最近记录摘要。
-- 在应用内用蓝色实线表示“已确认运行”，黄色虚线表示“这段时间没有运行证据”。
 - 删除单条历史记录，不影响该应用之后的通知监控。
 
 ## 安装后怎么用
@@ -66,30 +63,15 @@ OMN 保存的是来源应用放进通知里的 Android 动作，而不是自己�
 - 不读取联系人、账号或其他应用的私有数据。
 - 卸载应用会删除本地通知历史；v1 暂无导出和恢复功能。
 
-已经安装过内部 `0.1.x-mvp` 测试版的设备，请直接覆盖安装正式 APK，不要先卸载。
-
 ## 已知边界
 
 - 目前只支持 Android 16 及以上。
-- Android 厂商的后台管理仍可能中断通知监听；OMN 会展示它能确认的健康状态，但无法凭空证明系统没有漏交通知。
-- 黄色时间段表示“缺少运行证据”，不等于已经证明应用当时停止运行。
+- Android 厂商的后台管理仍可能中断通知监听；OMN 无法为自己保活，请手动设置电池优化项或后台锁定等保活操作。
 - 跳转依赖来源通知提供的动作，OMN 无法为没有精确目标的通知制造可靠链接。
 
 ## 开发
 
 项目使用原生 Kotlin、Jetpack Compose、Material 3 和 Room，`applicationId` 为 `io.github.prince_dulb.ohmynotification`。
-
-Windows 本地验证：
-
-```powershell
-.\gradlew.bat test lint :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest
-.\tools\verify-testdata.ps1
-.\tools\verify-apk-boundary.ps1
-.\tools\verify-installable-apk.ps1
-.\tools\verify-sensitive-content.ps1 -SelfTest
-```
-
-正式签名材料不在仓库中。构建、测试和发布约束见[开发计划](docs/开发计划书/README.md)，版本身份与校验和见[`v1.0.0` 发布说明](docs/发布说明-v1.0.0.md)。
 
 提交问题时，请附上手机型号、Android 版本、OMN 版本、复现步骤和预期行为；截图或日志中的通知正文、账号和内容标识请先打码。
 

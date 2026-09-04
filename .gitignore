@@ -20,6 +20,9 @@ captures/
 .local-evidence/
 .tmp/
 
+# Project planning and development documents stay local
+/docs/
+
 # Local delivery artifacts; public releases require explicit approval
 artifacts/*.apk
 artifacts/*.sha256
