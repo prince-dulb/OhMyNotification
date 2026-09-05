@@ -22,6 +22,7 @@ captures/
 
 # Project planning and development documents stay local
 /docs/
+/AGENTS.md
 
 # Local development and final release archives. Public binaries are attached to GitHub Releases.
 /artifacts/
