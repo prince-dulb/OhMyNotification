@@ -11,7 +11,8 @@ Checks an installable APK's signature, alignment, identity, SDK boundary, launch
 #>
 param(
     [string]$ApkPath,
-    [string]$ExpectedVersion = '1.0.0',
+    [string]$ExpectedVersion,
+    [int]$ExpectedVersionCode,
     [switch]$RequireRelease
 )
 
@@ -19,6 +20,22 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$buildConfigPath = Join-Path $projectRoot 'app\build.gradle.kts'
+$buildConfig = Get-Content -LiteralPath $buildConfigPath -Raw -Encoding UTF8
+if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) {
+    $versionNameMatch = [regex]::Match($buildConfig, 'versionName\s*=\s*"([^"]+)"')
+    if (-not $versionNameMatch.Success) {
+        throw 'Could not read versionName from app/build.gradle.kts.'
+    }
+    $ExpectedVersion = $versionNameMatch.Groups[1].Value
+}
+if ($ExpectedVersionCode -le 0) {
+    $versionCodeMatch = [regex]::Match($buildConfig, 'versionCode\s*=\s*(\d+)')
+    if (-not $versionCodeMatch.Success) {
+        throw 'Could not read versionCode from app/build.gradle.kts.'
+    }
+    $ExpectedVersionCode = [int]$versionCodeMatch.Groups[1].Value
+}
 if ([string]::IsNullOrWhiteSpace($ApkPath)) {
     $ApkPath = Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk'
 }
@@ -83,7 +100,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $expectedPackage = 'io.github.prince_dulb.ohmynotification'
-if ($badging -notmatch "package: name='$([regex]::Escape($expectedPackage))'.*versionName='$([regex]::Escape($ExpectedVersion))'") {
+if (
+    $badging -notmatch (
+        "package: name='$([regex]::Escape($expectedPackage))'" +
+        ".*versionCode='$ExpectedVersionCode'" +
+        ".*versionName='$([regex]::Escape($ExpectedVersion))'"
+    )
+) {
     throw 'APK package identity or version does not match the release contract.'
 }
 if ($badging -notmatch "sdkVersion:'36'" -or $badging -notmatch "targetSdkVersion:'36'") {
@@ -126,4 +149,4 @@ finally {
 }
 
 $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $ApkPath).Hash.ToLowerInvariant()
-Write-Output "PASS apk=$([System.IO.Path]::GetFileName($ApkPath)) sha256=$sha256 package=$expectedPackage version=$ExpectedVersion release=$RequireRelease arm64=$hasArm64"
+Write-Output "PASS apk=$([System.IO.Path]::GetFileName($ApkPath)) sha256=$sha256 package=$expectedPackage version=$ExpectedVersion versionCode=$ExpectedVersionCode release=$RequireRelease arm64=$hasArm64"

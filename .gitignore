@@ -23,9 +23,9 @@ captures/
 # Project planning and development documents stay local
 /docs/
 
-# Local delivery artifacts; public releases require explicit approval
-artifacts/*.apk
-artifacts/*.sha256
+# Local development and final release archives. Public binaries are attached to GitHub Releases.
+/artifacts/
+/release/
 
 # Signing and secrets
 *.jks

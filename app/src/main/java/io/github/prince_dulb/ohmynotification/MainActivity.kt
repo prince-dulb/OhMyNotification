@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
         val detailIntent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).apply {
             putExtra(
                 Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
-                OmnNotificationListenerComponent.componentName(this@MainActivity),
+                OmnNotificationListenerComponent.componentName(this@MainActivity).flattenToString(),
             )
         }
         try {

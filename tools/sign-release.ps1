@@ -14,6 +14,8 @@ without deleting its app data.
 .\tools\sign-release.ps1
 #>
 param(
+    [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z.-]*$')]
+    [string]$ArtifactVersion = '1.0.0',
     [string]$ReleaseKeyStore = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.android\OhMyNotification-release.jks'),
     [string]$ReleaseKeyAlias = 'ohmynotification-release',
     [string]$LineagePath = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.android\OhMyNotification-signing-lineage')
@@ -25,7 +27,7 @@ Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $unsignedApk = Join-Path $projectRoot 'app\build\outputs\apk\release\app-release-unsigned.apk'
 $artifactsDirectory = Join-Path $projectRoot 'artifacts'
-$signedApk = Join-Path $artifactsDirectory 'OhMyNotification-1.0.0-release.apk'
+$signedApk = Join-Path $artifactsDirectory "OhMyNotification-$ArtifactVersion-release.apk"
 $shaFile = "$signedApk.sha256"
 $debugKeyStore = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.android\debug.keystore'
 
@@ -35,7 +37,7 @@ foreach ($requiredFile in @($unsignedApk, $ReleaseKeyStore, $debugKeyStore)) {
     }
 }
 if ((Test-Path -LiteralPath $signedApk) -or (Test-Path -LiteralPath $shaFile)) {
-    throw 'The v1.0.0 signed artifact already exists. Refusing to overwrite it.'
+    throw "The $ArtifactVersion signed artifact already exists. Refusing to overwrite it."
 }
 
 function Resolve-SdkPath {
