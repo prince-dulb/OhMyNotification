@@ -16,7 +16,7 @@
 
 [下载最新正式版](https://github.com/prince-dulb/OhMyNotification/releases/latest)
 
-当前版本：`v1.0.1`　·　系统要求：Android 16 及以上
+当前版本：`v1.0.1`　·　系统要求：**目前仅支持Android 16 及以上**
 
 ## 能做什么
 
